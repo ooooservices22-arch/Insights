@@ -51,6 +51,7 @@ export interface ContractorReview {
   id: string;
   contractorId: string;
   contractorName: string;
+  subjectType?: 'Contractor' | 'Restoration Company' | 'Landlord / Slumlord Fix';
   authorName: string;
   authorRole: 'Homeowner' | 'Insurance Adjuster' | 'Business Owner' | 'Tenant';
   rating: number;
@@ -138,6 +139,17 @@ export interface AlmanacReport {
   photoDataUrl?: string;
 }
 
+export interface StoreProductReview {
+  id: string;
+  author: string;
+  role: string;
+  rating: number;
+  efficiencyScore: string;
+  longevityObserved: string;
+  comment: string;
+  createdAt: string;
+}
+
 export interface StoreItem {
   id: string;
   name: string;
@@ -151,6 +163,11 @@ export interface StoreItem {
     | 'Survival & Smart Guard'
     | 'Safety & PPE';
   sku: string;
+  formulationType?: 'Organic / Non-Toxic' | 'Botanical / Eco-Alternative' | 'Conventional Pro-Grade';
+  efficiencyRating?: string;
+  lifeExpectancy?: string;
+  brandBiasFreeNote?: string;
+  productReviews?: StoreProductReview[];
   wholesalePrice: number;
   retailPrice: number;
   rentable: boolean;
@@ -199,6 +216,12 @@ export interface UsedEquipmentListing {
 export interface GrocerySanitationReport {
   id: string;
   storeName: string;
+  businessType?:
+    | 'Grocery Store'
+    | 'Restaurant / Cafe'
+    | 'Storage Facility'
+    | 'Hygiene / Cleaning Business'
+    | 'Retail / Other Business';
   branchLocation: string;
   city: string;
   department:
@@ -206,9 +229,18 @@ export interface GrocerySanitationReport {
     | 'Dairy & Deli Coolers'
     | 'Meat & Seafood Cases'
     | 'Bakery & Dry Bulk'
-    | 'Power Outage / Spoilage';
-  advisory: 'Stay Away — Mold Proof' | 'Power Outage — Spoilage Risk' | 'Caution — Poor Cleaning' | 'Verified Clean';
+    | 'Power Outage / Spoilage'
+    | 'Pests Seen (Roaches / Rodents / Flies)'
+    | 'Kitchen / Dining / Restroom Hygiene'
+    | 'Climate Control / Unit Moisture & Mold'
+    | 'Facility Pest / Sanitation Compliance';
+  advisory: 'Stay Away — Mold Proof' | 'Stay Away — Pests / Hygiene' | 'Power Outage — Spoilage Risk' | 'Caution — Poor Cleaning' | 'Verified Clean';
   powerOutageHours?: number;
+  weekLabel?: string;
+  auditSequenceNumber?: number;
+  cleanlinessScore?: number;
+  cosmeticCoverupDetected?: boolean;
+  bountyCreditedUsd?: number;
   summary: string;
   reporterName: string;
   mediaType: 'photo' | 'video';
@@ -218,6 +250,116 @@ export interface GrocerySanitationReport {
   moderationNote?: string;
   confirmations: number;
   createdAt: string;
+}
+
+export interface FieldAuditRecord {
+  id: string;
+  venueType:
+    | 'Home / Residential'
+    | 'Grocery Store'
+    | 'Restaurant / Food Business'
+    | 'Storage Facility'
+    | 'Hygiene / Cleaning Business'
+    | 'Commercial Building';
+  venueName: string;
+  locationLabel: string;
+  lat: number;
+  lon: number;
+  notes: string;
+  weekLabel?: string;
+  cleanlinessScore?: number;
+  cosmeticCoverupDetected?: boolean;
+  reporterName?: string;
+  bountyCreditedUsd?: number;
+  mediaType: 'photo' | 'video';
+  mediaDataUrl?: string;
+  capturedAt: string;
+  syncedToServer: boolean;
+}
+
+export interface FormerEmployeeInsight {
+  id: string;
+  companyName: string;
+  businessSector:
+    | 'Storage Facility'
+    | 'Hygiene / Cleaning Business'
+    | 'Grocery Store'
+    | 'Restaurant / Food Service'
+    | 'Restoration / Contractor'
+    | 'Property Management';
+  city: string;
+  formerRole: string;
+  employmentDates: string;
+  authorAlias: string;
+  hidesIssuesFromCustomers: boolean;
+  summary: string;
+  proofCaption: string;
+  mediaDataUrl?: string;
+  moderationStatus: VerificationStatus;
+  moderationNote?: string;
+  confirmations: number;
+  createdAt: string;
+}
+
+export interface BetaScoutProgramEnrollment {
+  id: string;
+  fullName: string;
+  email: string;
+  city: string;
+  deviceType: 'iPhone / iPad (iOS TestFlight Beta)' | 'Android / Web PWA';
+  track:
+    | 'iOS Beta Tester + Paid Drive-Around Scout'
+    | 'Weekly Store Cleanliness Auditor'
+    | 'Full-Time Field Inspector Track';
+  vehicleAvailable: boolean;
+  auditsLoggedCount: number;
+  earnedIncentivesUsd: number;
+  hiringTier: 'Beta Scout' | 'Verified Weekly Auditor' | 'Priority Hire Candidate';
+  createdAt: string;
+}
+
+export interface CrowdfundPledge {
+  id: string;
+  donorName: string;
+  amountUsd: number;
+  note?: string;
+  createdAt: string;
+}
+
+export interface FamilyCrowdfundCampaign {
+  id: string;
+  familyLabel: string;
+  city: string;
+  assistanceType:
+    | 'Mold / Organic Growth & Air Filtration Supplies'
+    | 'Safe Water Filtration System'
+    | 'Emergency Pest Control Supplies'
+    | 'Verified Contractor / Plumber / Inspector Help'
+    | 'Disaster Survival & Generator Readiness';
+  neededItemsOrScope: string;
+  storySummary: string;
+  goalUsd: number;
+  raisedUsd: number;
+  verifiedByInspector: boolean;
+  status: 'Active' | 'Fully Funded';
+  pledges: CrowdfundPledge[];
+  createdAt: string;
+}
+
+export interface HazardGuidanceResult {
+  hazardType: string;
+  locationLabel: string;
+  headline: string;
+  immediateSafetySummary: string;
+  suggestedVideos: {
+    title: string;
+    focus: string;
+    durationEstimate: string;
+    codeStandard: string;
+    searchUrl: string;
+  }[];
+  animatedSteps: AnimatedRepairStep[];
+  sources: GroundingSource[];
 }
 
 export interface PowerOutageReport {

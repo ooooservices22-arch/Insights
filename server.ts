@@ -7,22 +7,29 @@ import { fetchLiveHazards } from './server/hazards.ts';
 import {
   analyzePropertyPhoto,
   askInsightsGuide,
+  generateHazardGuidance,
   getLocationIntelligence,
   moderateSubmission,
 } from './server/gemini.ts';
 import type {
   AbandonedHazardReport,
   AlmanacReport,
+  BetaScoutProgramEnrollment,
   BlacklistEntry,
   Booking,
   Contractor,
   ContractorReview,
+  CrowdfundPledge,
   EmergencyMessage,
+  FamilyCrowdfundCampaign,
+  FieldAuditRecord,
   FieldGig,
+  FormerEmployeeInsight,
   ForumPost,
   ForumReply,
   GrocerySanitationReport,
   StoreOrder,
+  StoreProductReview,
 } from './src/types.ts';
 
 const app = express();
@@ -95,6 +102,32 @@ app.post('/api/ai/location-intel', async (req, res) => {
     console.error('location-intel error:', err);
     res.status(500).json({
       error: err instanceof Error ? err.message : 'Failed to retrieve grounded city intelligence.',
+    });
+  }
+});
+
+// AI Interactive Hazard Diagnostic Overlay & Suggested How-To Videos
+app.post('/api/ai/hazard-guidance', async (req, res) => {
+  try {
+    const { hazardType, locationLabel, alertContext } = req.body as {
+      hazardType: string;
+      locationLabel?: string;
+      alertContext?: string;
+    };
+    if (!hazardType?.trim()) {
+      res.status(400).json({ error: 'hazardType is required.' });
+      return;
+    }
+    const result = await generateHazardGuidance({
+      hazardType: hazardType.trim(),
+      locationLabel: locationLabel || 'San Francisco, CA',
+      alertContext,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('hazard-guidance error:', err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Failed to generate hazard repair overlay.',
     });
   }
 });
@@ -263,7 +296,8 @@ app.post('/api/reviews', async (req, res) => {
   const review: ContractorReview = {
     id: `rev-${Date.now()}`,
     contractorId: body.contractorId,
-    contractorName: contractor?.company || body.contractorName || 'Contractor',
+    contractorName: contractor?.company || body.contractorName || 'Subject Entity',
+    subjectType: body.subjectType || 'Contractor',
     authorName: body.authorName.trim(),
     authorRole: body.authorRole || 'Homeowner',
     rating: Math.min(5, Math.max(1, Number(body.rating || 5))),
@@ -602,6 +636,41 @@ app.post('/api/store/orders', (req, res) => {
   res.status(201).json(order);
 });
 
+app.post('/api/store/items/:id/review', (req, res) => {
+  const { author, role, rating, efficiencyScore, longevityObserved, comment } = req.body as {
+    author: string;
+    role?: string;
+    rating: number;
+    efficiencyScore: string;
+    longevityObserved: string;
+    comment: string;
+  };
+  if (!author?.trim() || !comment?.trim()) {
+    res.status(400).json({ error: 'Author and review comment are required.' });
+    return;
+  }
+  const db = readDb();
+  const item = db.storeItems.find((s) => s.id === req.params.id);
+  if (!item) {
+    res.status(404).json({ error: 'Store item not found.' });
+    return;
+  }
+  const review: StoreProductReview = {
+    id: `pr-${Date.now()}`,
+    author: author.trim(),
+    role: role?.trim() || 'Verified Buyer',
+    rating: Math.min(5, Math.max(1, Number(rating || 5))),
+    efficiencyScore: efficiencyScore?.trim() || 'Meets lab efficiency spec',
+    longevityObserved: longevityObserved?.trim() || 'Initial deployment',
+    comment: comment.trim(),
+    createdAt: new Date().toISOString(),
+  };
+  if (!item.productReviews) item.productReviews = [];
+  item.productReviews.unshift(review);
+  writeDb(db);
+  res.status(201).json(item);
+});
+
 // Field Scout & Insurance Documentation Side-Work Gigs
 app.get('/api/gigs', (_req, res) => {
   const db = readDb();
@@ -728,14 +797,28 @@ app.post('/api/grocery-reports', async (req, res) => {
   }
   const db = readDb();
   if (!db.groceryReports) db.groceryReports = [];
+  const normalizedStore = body.storeName.trim().toLowerCase();
+  const priorReportsForStore = db.groceryReports.filter(
+    (g) => g.storeName.trim().toLowerCase() === normalizedStore
+  );
+  const nextSeq = priorReportsForStore.length + 1;
+  const bountyCreditedUsd = nextSeq >= 2 ? 35 : 20;
+
   const report: GrocerySanitationReport = {
     id: `grc-${Date.now()}`,
     storeName: body.storeName.trim(),
+    businessType: body.businessType || 'Grocery Store',
     branchLocation: body.branchLocation?.trim() || 'Main Branch',
     city: body.city?.trim() || 'San Francisco, CA',
     department: body.department || 'Produce Misters & Bins',
     advisory: body.advisory || 'Stay Away — Mold Proof',
     powerOutageHours: body.powerOutageHours ? Number(body.powerOutageHours) : undefined,
+    weekLabel: body.weekLabel?.trim() || `Week ${nextSeq}`,
+    auditSequenceNumber: nextSeq,
+    cleanlinessScore:
+      body.cleanlinessScore !== undefined ? Math.min(100, Math.max(0, Number(body.cleanlinessScore))) : undefined,
+    cosmeticCoverupDetected: Boolean(body.cosmeticCoverupDetected),
+    bountyCreditedUsd,
     summary: body.summary.trim(),
     reporterName: body.reporterName.trim(),
     mediaType: body.mediaType || 'photo',
@@ -747,8 +830,85 @@ app.post('/api/grocery-reports', async (req, res) => {
     createdAt: new Date().toISOString(),
   };
   db.groceryReports.unshift(report);
+
+  const scoutMatch = (db.betaEnrollments || []).find(
+    (e) => e.fullName.trim().toLowerCase() === report.reporterName.toLowerCase()
+  );
+  if (scoutMatch) {
+    scoutMatch.auditsLoggedCount += 1;
+    scoutMatch.earnedIncentivesUsd += bountyCreditedUsd;
+    scoutMatch.hiringTier =
+      scoutMatch.auditsLoggedCount >= 5
+        ? 'Priority Hire Candidate'
+        : scoutMatch.auditsLoggedCount >= 3
+          ? 'Verified Weekly Auditor'
+          : 'Beta Scout';
+  }
+
   writeDb(db);
   res.status(201).json(report);
+});
+
+// Field Audit Mode (Store, House, or Business live photo/video logs + offline sync)
+app.get('/api/audits', (_req, res) => {
+  const db = readDb();
+  res.json(db.audits || []);
+});
+
+app.post('/api/audits', (req, res) => {
+  const body = req.body as Partial<FieldAuditRecord>;
+  if (!body.venueName || !body.notes) {
+    res.status(400).json({ error: 'Venue name and inspection notes are required.' });
+    return;
+  }
+  const db = readDb();
+  if (!db.audits) db.audits = [];
+  const priorForVenue = db.audits.filter(
+    (a) => a.venueName.trim().toLowerCase() === body.venueName!.trim().toLowerCase()
+  ).length;
+  const bountyCreditedUsd = body.venueType !== 'Home / Residential' ? (priorForVenue >= 1 ? 35 : 20) : 0;
+
+  const audit: FieldAuditRecord = {
+    id: body.id || `aud-${Date.now()}`,
+    venueType: body.venueType || 'Home / Residential',
+    venueName: body.venueName.trim(),
+    locationLabel: body.locationLabel?.trim() || 'San Francisco, CA',
+    lat: Number(body.lat) || 37.7749,
+    lon: Number(body.lon) || -122.4194,
+    notes: body.notes.trim(),
+    weekLabel: body.weekLabel?.trim() || (priorForVenue >= 1 ? `Week ${priorForVenue + 1}` : undefined),
+    cleanlinessScore:
+      body.cleanlinessScore !== undefined ? Math.min(100, Math.max(0, Number(body.cleanlinessScore))) : undefined,
+    cosmeticCoverupDetected: Boolean(body.cosmeticCoverupDetected),
+    reporterName: body.reporterName?.trim() || undefined,
+    bountyCreditedUsd,
+    mediaType: body.mediaType || 'photo',
+    mediaDataUrl: body.mediaDataUrl,
+    capturedAt: body.capturedAt || new Date().toISOString(),
+    syncedToServer: true,
+  };
+  const existsIdx = db.audits.findIndex((a) => a.id === audit.id);
+  if (existsIdx >= 0) db.audits[existsIdx] = audit;
+  else {
+    db.audits.unshift(audit);
+    if (audit.reporterName && bountyCreditedUsd > 0) {
+      const scoutMatch = (db.betaEnrollments || []).find(
+        (e) => e.fullName.trim().toLowerCase() === audit.reporterName!.toLowerCase()
+      );
+      if (scoutMatch) {
+        scoutMatch.auditsLoggedCount += 1;
+        scoutMatch.earnedIncentivesUsd += bountyCreditedUsd;
+        scoutMatch.hiringTier =
+          scoutMatch.auditsLoggedCount >= 5
+            ? 'Priority Hire Candidate'
+            : scoutMatch.auditsLoggedCount >= 3
+              ? 'Verified Weekly Auditor'
+              : 'Beta Scout';
+      }
+    }
+  }
+  writeDb(db);
+  res.status(201).json(audit);
 });
 
 app.post('/api/grocery-reports/:id/verify', (req, res) => {
@@ -799,6 +959,187 @@ app.post('/api/emergency-comms', (req, res) => {
   db.emergencyMessages.unshift(msg);
   writeDb(db);
   res.status(201).json(msg);
+});
+
+// iOS TestFlight Beta Program & Drive-Around Field Scout Hiring Incentives
+app.get('/api/beta-program', (_req, res) => {
+  const db = readDb();
+  const enrollments = db.betaEnrollments || [];
+  const totalAudits = (db.groceryReports || []).length + (db.audits || []).length;
+  const totalIncentivesUsd = enrollments.reduce((sum, e) => sum + e.earnedIncentivesUsd, 0);
+  res.json({
+    enrollments,
+    stats: {
+      enrolledBetaTesters: enrollments.length,
+      totalWeeklyAuditsLogged: totalAudits,
+      totalIncentivesEarnedUsd: totalIncentivesUsd,
+      priorityHireCandidates: enrollments.filter((e) => e.hiringTier === 'Priority Hire Candidate').length,
+      iosBundleId: 'app.insights.fieldaudit.beta',
+      betaStage: 'Open Beta (iOS Web Clip + TestFlight Waitlist Ready)',
+    },
+  });
+});
+
+app.post('/api/beta-program/enroll', (req, res) => {
+  const body = req.body as Partial<BetaScoutProgramEnrollment>;
+  if (!body.fullName?.trim() || !body.email?.trim() || !body.city?.trim()) {
+    res.status(400).json({ error: 'Full name, Apple/contact email, and city are required.' });
+    return;
+  }
+  const db = readDb();
+  if (!db.betaEnrollments) db.betaEnrollments = [];
+  const enrollment: BetaScoutProgramEnrollment = {
+    id: `beta-${Date.now()}`,
+    fullName: body.fullName.trim(),
+    email: body.email.trim(),
+    city: body.city.trim(),
+    deviceType: body.deviceType || 'iPhone / iPad (iOS TestFlight Beta)',
+    track: body.track || 'iOS Beta Tester + Paid Drive-Around Scout',
+    vehicleAvailable: body.vehicleAvailable !== false,
+    auditsLoggedCount: 0,
+    earnedIncentivesUsd: 0,
+    hiringTier: 'Beta Scout',
+    createdAt: new Date().toISOString(),
+  };
+  db.betaEnrollments.unshift(enrollment);
+  writeDb(db);
+  res.status(201).json(enrollment);
+});
+
+// Former Employee / Ex-Employer Business & Hygiene Insights (Storage, Hygiene, Grocery, Restaurants)
+app.get('/api/ex-employer-insights', (_req, res) => {
+  const db = readDb();
+  res.json(db.formerEmployeeInsights || []);
+});
+
+app.post('/api/ex-employer-insights', async (req, res) => {
+  const body = req.body as Partial<FormerEmployeeInsight>;
+  if (!body.companyName?.trim() || !body.formerRole?.trim() || !body.summary?.trim() || !body.authorAlias?.trim()) {
+    res.status(400).json({
+      error: 'Company name, former role, alias, and factual summary are required.',
+    });
+    return;
+  }
+  const mod = await moderateSubmission({
+    type: 'blacklist',
+    text: `${body.companyName} (${body.businessSector} · ${body.formerRole}): ${body.summary}`,
+    hasEvidence: Boolean(body.mediaDataUrl || body.proofCaption),
+  });
+  if (!mod.constructive) {
+    res.status(422).json({ error: `Submission blocked by moderation policy: ${mod.reason}` });
+    return;
+  }
+  const db = readDb();
+  if (!db.formerEmployeeInsights) db.formerEmployeeInsights = [];
+  const insight: FormerEmployeeInsight = {
+    id: `ex-${Date.now()}`,
+    companyName: body.companyName.trim(),
+    businessSector: body.businessSector || 'Storage Facility',
+    city: body.city?.trim() || 'San Francisco, CA',
+    formerRole: body.formerRole.trim(),
+    employmentDates: body.employmentDates?.trim() || 'Recent employment',
+    authorAlias: body.authorAlias.trim(),
+    hidesIssuesFromCustomers: Boolean(body.hidesIssuesFromCustomers),
+    summary: body.summary.trim(),
+    proofCaption: body.proofCaption?.trim() || 'Former staff schedule / maintenance log reference',
+    mediaDataUrl: body.mediaDataUrl,
+    moderationStatus: mod.requiresHold ? 'pending_fact_check' : 'verified',
+    moderationNote: mod.reason,
+    confirmations: 1,
+    createdAt: new Date().toISOString(),
+  };
+  db.formerEmployeeInsights.unshift(insight);
+  writeDb(db);
+  res.status(201).json(insight);
+});
+
+app.post('/api/ex-employer-insights/:id/verify', (req, res) => {
+  const { action } = req.body as { action: 'verify' | 'confirm' | 'dispute' };
+  const db = readDb();
+  const target = (db.formerEmployeeInsights || []).find((x) => x.id === req.params.id);
+  if (!target) {
+    res.status(404).json({ error: 'Insight not found.' });
+    return;
+  }
+  if (action === 'verify') {
+    target.moderationStatus = 'verified';
+    target.moderationNote = 'Corroborated employment timeline & facility evidence.';
+  } else if (action === 'dispute') {
+    target.moderationStatus = 'disputed';
+    target.moderationNote = 'Flagged for secondary former-staff verification.';
+  } else {
+    target.confirmations += 1;
+  }
+  writeDb(db);
+  res.json(target);
+});
+
+// Community Family Relief Crowdfunding (Donate Supplies or Verified Repair Help)
+app.get('/api/crowdfund', (_req, res) => {
+  const db = readDb();
+  res.json(db.crowdfundCampaigns || []);
+});
+
+app.post('/api/crowdfund', (req, res) => {
+  const body = req.body as Partial<FamilyCrowdfundCampaign>;
+  if (!body.familyLabel?.trim() || !body.neededItemsOrScope?.trim() || !body.storySummary?.trim() || !body.goalUsd) {
+    res.status(400).json({
+      error: 'Family/household label, needed supplies or help, story, and goal USD are required.',
+    });
+    return;
+  }
+  const db = readDb();
+  if (!db.crowdfundCampaigns) db.crowdfundCampaigns = [];
+  const campaign: FamilyCrowdfundCampaign = {
+    id: `cf-${Date.now()}`,
+    familyLabel: body.familyLabel.trim(),
+    city: body.city?.trim() || 'San Francisco, CA',
+    assistanceType: body.assistanceType || 'Mold / Organic Growth & Air Filtration Supplies',
+    neededItemsOrScope: body.neededItemsOrScope.trim(),
+    storySummary: body.storySummary.trim(),
+    goalUsd: Math.max(25, Number(body.goalUsd)),
+    raisedUsd: 0,
+    verifiedByInspector: false,
+    status: 'Active',
+    pledges: [],
+    createdAt: new Date().toISOString(),
+  };
+  db.crowdfundCampaigns.unshift(campaign);
+  writeDb(db);
+  res.status(201).json(campaign);
+});
+
+app.post('/api/crowdfund/:id/pledge', (req, res) => {
+  const { donorName, amountUsd, note } = req.body as {
+    donorName: string;
+    amountUsd: number;
+    note?: string;
+  };
+  const amount = Number(amountUsd);
+  if (!donorName?.trim() || !Number.isFinite(amount) || amount < 5) {
+    res.status(400).json({ error: 'Donor name and pledge amount ($5 minimum) are required.' });
+    return;
+  }
+  const db = readDb();
+  const campaign = (db.crowdfundCampaigns || []).find((c) => c.id === req.params.id);
+  if (!campaign) {
+    res.status(404).json({ error: 'Campaign not found.' });
+    return;
+  }
+  const pledge: CrowdfundPledge = {
+    id: `pl-${Date.now()}`,
+    donorName: donorName.trim(),
+    amountUsd: amount,
+    note: note?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+  };
+  campaign.pledges.unshift(pledge);
+  campaign.raisedUsd += amount;
+  if (campaign.raisedUsd >= campaign.goalUsd) {
+    campaign.status = 'Fully Funded';
+  }
+  writeDb(db);
+  res.status(201).json(campaign);
 });
 
 async function startServer() {

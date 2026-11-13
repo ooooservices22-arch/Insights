@@ -1,22 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AiGuideDrawer } from './components/AiGuideDrawer';
+import { BetaAppStoreModal } from './components/BetaAppStoreModal';
 import { CommunityGlassWallWorkspace } from './components/CommunityGlassWallWorkspace';
 import { DiagnosticsWorkspace } from './components/DiagnosticsWorkspace';
 import { HazardsMapWorkspace } from './components/HazardsMapWorkspace';
 import { MarketplaceWorkspace } from './components/MarketplaceWorkspace';
+import { OfflineAndUpdateBanner, PWAInstallButton } from './components/PWAInstallAndSync';
 import { StoreAndSurvivalWorkspace } from './components/StoreAndSurvivalWorkspace';
+import { loadOfflineBackup, saveOfflineBackup } from './utils/offlineBackup';
 import type {
   AbandonedHazardReport,
   AlmanacReport,
+  BetaScoutProgramEnrollment,
   BlacklistEntry,
   Booking,
   Contractor,
   ContractorReview,
   EmergencyMessage,
+  FamilyCrowdfundCampaign,
+  FieldAuditRecord,
   FieldGig,
+  FormerEmployeeInsight,
   ForumPost,
+  GrocerySanitationReport,
+  PowerOutageReport,
   StoreItem,
   StoreOrder,
+  UsedEquipmentListing,
 } from './types';
 
 type WorkspaceTab = 'diagnostics' | 'hazards' | 'marketplace' | 'community' | 'store';
@@ -33,6 +43,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('diagnostics');
   const [survivalMode, setSurvivalMode] = useState<boolean>(false);
   const [guideOpen, setGuideOpen] = useState<boolean>(false);
+  const [prefillGuideQuestion, setPrefillGuideQuestion] = useState<string | null>(null);
+  const [betaModalOpen, setBetaModalOpen] = useState<boolean>(false);
 
   const [coords, setCoords] = useState<{ lat: number; lon: number; label: string }>({
     lat: 37.7749,
@@ -47,6 +59,13 @@ export default function App() {
   const [almanac, setAlmanac] = useState<AlmanacReport[]>([]);
   const [fieldGigs, setFieldGigs] = useState<FieldGig[]>([]);
   const [abandonedHazards, setAbandonedHazards] = useState<AbandonedHazardReport[]>([]);
+  const [groceryReports, setGroceryReports] = useState<GrocerySanitationReport[]>([]);
+  const [powerOutages, setPowerOutages] = useState<PowerOutageReport[]>([]);
+  const [usedEquipment, setUsedEquipment] = useState<UsedEquipmentListing[]>([]);
+  const [audits, setAudits] = useState<FieldAuditRecord[]>([]);
+  const [formerEmployeeInsights, setFormerEmployeeInsights] = useState<FormerEmployeeInsight[]>([]);
+  const [crowdfundCampaigns, setCrowdfundCampaigns] = useState<FamilyCrowdfundCampaign[]>([]);
+  const [betaEnrollments, setBetaEnrollments] = useState<BetaScoutProgramEnrollment[]>([]);
   const [storeItems, setStoreItems] = useState<StoreItem[]>([]);
   const [storeOrders, setStoreOrders] = useState<StoreOrder[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -56,6 +75,7 @@ export default function App() {
   const [storeCategory, setStoreCategory] = useState<string>('All');
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -78,6 +98,12 @@ export default function App() {
           gigRes,
           abnRes,
           emgRes,
+          pwrRes,
+          grcRes,
+          audRes,
+          exRes,
+          cfRes,
+          betaRes,
         ] = await Promise.all([
           fetch('/api/contractors'),
           fetch('/api/reviews'),
@@ -89,22 +115,70 @@ export default function App() {
           fetch('/api/gigs'),
           fetch('/api/abandoned-hazards'),
           fetch('/api/emergency-comms'),
+          fetch('/api/power-outages'),
+          fetch('/api/grocery-reports'),
+          fetch('/api/audits'),
+          fetch('/api/ex-employer-insights'),
+          fetch('/api/crowdfund'),
+          fetch('/api/beta-program'),
         ]);
         if (!active) return;
+
         setContractors(await ctrRes.json());
         setReviews(await revRes.json());
         setBlacklist(await blRes.json());
         setForum(await frmRes.json());
         setAlmanac(await almRes.json());
+
         const storePayload = await strRes.json();
         setStoreItems(storePayload.items || []);
         setStoreOrders(storePayload.orders || []);
+        setUsedEquipment(storePayload.usedEquipment || []);
+
         setBookings(await bkgRes.json());
         setFieldGigs(await gigRes.json());
         setAbandonedHazards(await abnRes.json());
         setEmergencyMessages(await emgRes.json());
+        setPowerOutages(await pwrRes.json());
+        setGroceryReports(await grcRes.json());
+
+        const serverAudits = (await audRes.json()) as FieldAuditRecord[];
+        const cached = loadOfflineBackup();
+        const unsyncedLocal = (cached?.audits || []).filter(
+          (la) => !la.syncedToServer && !serverAudits.some((sa) => sa.id === la.id)
+        );
+        setAudits([...unsyncedLocal, ...serverAudits]);
+
+        setFormerEmployeeInsights(await exRes.json());
+        setCrowdfundCampaigns(await cfRes.json());
+
+        const betaPayload = await betaRes.json();
+        setBetaEnrollments(betaPayload.enrollments || []);
       } catch (err) {
-        if (active) {
+        if (!active) return;
+        const cached = loadOfflineBackup();
+        if (cached) {
+          setContractors(cached.contractors || []);
+          setReviews(cached.reviews || []);
+          setBlacklist(cached.blacklist || []);
+          setForum(cached.forum || []);
+          setAlmanac(cached.almanac || []);
+          setFieldGigs(cached.fieldGigs || []);
+          setAbandonedHazards(cached.abandonedHazards || []);
+          setGroceryReports(cached.groceryReports || []);
+          setPowerOutages(cached.powerOutages || []);
+          setUsedEquipment(cached.usedEquipment || []);
+          setStoreItems(cached.storeItems || []);
+          setStoreOrders(cached.storeOrders || []);
+          setBookings(cached.bookings || []);
+          setEmergencyMessages(cached.emergencyMessages || []);
+          setAudits(cached.audits || []);
+          setFormerEmployeeInsights(cached.formerEmployeeInsights || []);
+          setCrowdfundCampaigns(cached.crowdfundCampaigns || []);
+          setBetaEnrollments(cached.betaEnrollments || []);
+          setLastBackupAt(cached.savedAt);
+          setLoadError(null);
+        } else {
           setLoadError(err instanceof Error ? err.message : 'Failed to load workspace data.');
         }
       } finally {
@@ -116,6 +190,103 @@ export default function App() {
       active = false;
     };
   }, []);
+
+  // Auto-backup all workspace state & audits locally for offline resilience
+  useEffect(() => {
+    if (loading) return;
+    const stamped = saveOfflineBackup({
+      savedAt: new Date().toISOString(),
+      contractors,
+      reviews,
+      blacklist,
+      forum,
+      almanac,
+      fieldGigs,
+      abandonedHazards,
+      groceryReports,
+      powerOutages,
+      usedEquipment,
+      storeItems,
+      storeOrders,
+      bookings,
+      emergencyMessages,
+      audits,
+      formerEmployeeInsights,
+      crowdfundCampaigns,
+      betaEnrollments,
+    });
+    setLastBackupAt(stamped);
+  }, [
+    loading,
+    contractors,
+    reviews,
+    blacklist,
+    forum,
+    almanac,
+    fieldGigs,
+    abandonedHazards,
+    groceryReports,
+    powerOutages,
+    usedEquipment,
+    storeItems,
+    storeOrders,
+    bookings,
+    emergencyMessages,
+    audits,
+    formerEmployeeInsights,
+    crowdfundCampaigns,
+    betaEnrollments,
+  ]);
+
+  const handleSaveAudit = async (audit: FieldAuditRecord) => {
+    setAudits((prev) => [audit, ...prev]);
+    try {
+      const res = await fetch('/api/audits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(audit),
+      });
+      if (res.ok) {
+        const synced = (await res.json()) as FieldAuditRecord;
+        setAudits((prev) => prev.map((a) => (a.id === audit.id ? { ...synced, syncedToServer: true } : a)));
+      }
+    } catch {
+      // Offline: stays safely in local backup with syncedToServer: false
+    }
+  };
+
+  const syncPendingAudits = useCallback(async () => {
+    const pending = audits.filter((a) => !a.syncedToServer);
+    if (!pending.length || !navigator.onLine) return;
+    for (const item of pending) {
+      try {
+        const res = await fetch('/api/audits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item),
+        });
+        if (res.ok) {
+          const synced = (await res.json()) as FieldAuditRecord;
+          setAudits((prev) => prev.map((a) => (a.id === item.id ? { ...synced, syncedToServer: true } : a)));
+        }
+      } catch {
+        break;
+      }
+    }
+  }, [audits]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      syncPendingAudits();
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [syncPendingAudits]);
+
+  const handleAskGuide = (question: string) => {
+    setPrefillGuideQuestion(question);
+    setGuideOpen(true);
+  };
 
   const navigateToContractors = (specialty?: string) => {
     setMarketplaceFilter(specialty || '');
@@ -202,8 +373,8 @@ export default function App() {
 
         {loading ? (
           <div className="space-y-4">
-            <div className="h-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl animate-pulse" />
-            <div className="h-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl animate-pulse" />
+            <div className="h-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl" />
+            <div className="h-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl" />
           </div>
         ) : (
           <>
@@ -212,6 +383,7 @@ export default function App() {
                 locationLabel={coords.label}
                 onNavigateToContractors={navigateToContractors}
                 onNavigateToStore={navigateToStore}
+                onAskGuide={handleAskGuide}
               />
             )}
 
@@ -221,6 +393,9 @@ export default function App() {
                 onUpdateCoords={setCoords}
                 contractors={contractors}
                 almanac={almanac}
+                powerOutages={powerOutages}
+                audits={audits}
+                onSaveAudit={handleSaveAudit}
                 onAddAlmanac={(r) => setAlmanac((prev) => [r, ...prev])}
                 onVerifyAlmanac={async (id) => {
                   const res = await fetch(`/api/almanac/${id}/verify`, { method: 'POST' });
@@ -229,6 +404,7 @@ export default function App() {
                     setAlmanac((prev) => prev.map((a) => (a.id === id ? updated : a)));
                   }
                 }}
+                onAskGuide={handleAskGuide}
               />
             )}
 
@@ -240,8 +416,10 @@ export default function App() {
                 initialFilter={marketplaceFilter}
                 onAddContractor={(c) => setContractors((prev) => [c, ...prev])}
                 onAddBooking={(b) => setBookings((prev) => [b, ...prev])}
+                onUpdateBooking={(b) => setBookings((prev) => prev.map((x) => (x.id === b.id ? b : x)))}
                 onAddGig={(g) => setFieldGigs((prev) => [g, ...prev])}
                 onUpdateGig={(g) => setFieldGigs((prev) => prev.map((x) => (x.id === g.id ? g : x)))}
+                onOpenBetaProgram={() => setBetaModalOpen(true)}
               />
             )}
 
@@ -252,6 +430,8 @@ export default function App() {
                 blacklist={blacklist}
                 forum={forum}
                 abandonedHazards={abandonedHazards}
+                groceryReports={groceryReports}
+                formerEmployeeInsights={formerEmployeeInsights}
                 onAddReview={(r) => setReviews((prev) => [r, ...prev])}
                 onUpdateReview={(r) => setReviews((prev) => prev.map((x) => (x.id === r.id ? r : x)))}
                 onAddBlacklist={(b) => setBlacklist((prev) => [b, ...prev])}
@@ -262,6 +442,15 @@ export default function App() {
                 onUpdateAbandonedHazard={(h) =>
                   setAbandonedHazards((prev) => prev.map((x) => (x.id === h.id ? h : x)))
                 }
+                onAddGroceryReport={(g) => setGroceryReports((prev) => [g, ...prev])}
+                onUpdateGroceryReport={(g) =>
+                  setGroceryReports((prev) => prev.map((x) => (x.id === g.id ? g : x)))
+                }
+                onAddFormerEmployeeInsight={(ex) => setFormerEmployeeInsights((prev) => [ex, ...prev])}
+                onUpdateFormerEmployeeInsight={(ex) =>
+                  setFormerEmployeeInsights((prev) => prev.map((x) => (x.id === ex.id ? ex : x)))
+                }
+                onOpenBetaProgram={() => setBetaModalOpen(true)}
               />
             )}
 
@@ -269,12 +458,23 @@ export default function App() {
               <StoreAndSurvivalWorkspace
                 items={storeItems}
                 orders={storeOrders}
+                usedEquipment={usedEquipment}
+                crowdfundCampaigns={crowdfundCampaigns}
                 emergencyMessages={emergencyMessages}
                 survivalMode={survivalMode}
                 onToggleSurvivalMode={() => setSurvivalMode((s) => !s)}
                 initialCategory={storeCategory}
                 onOrderCreated={(o) => setStoreOrders((prev) => [o, ...prev])}
+                onItemUpdated={(updatedItem) =>
+                  setStoreItems((prev) => prev.map((it) => (it.id === updatedItem.id ? updatedItem : it)))
+                }
+                onAddCampaign={(c) => setCrowdfundCampaigns((prev) => [c, ...prev])}
+                onCampaignUpdated={(c) =>
+                  setCrowdfundCampaigns((prev) => prev.map((x) => (x.id === c.id ? c : x)))
+                }
                 onEmergencyPosted={(m) => setEmergencyMessages((prev) => [m, ...prev])}
+                onNavigateToContractors={navigateToContractors}
+                onAskGuide={handleAskGuide}
               />
             )}
           </>
@@ -285,9 +485,17 @@ export default function App() {
       <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
         <div className="max-w-[1320px] mx-auto px-4 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
           <div>
-            insights · Open Beta Property Transparency Platform · Private Residential Owner Data Kept Confidential
+            insights · Open Beta Property &amp; Hygiene Transparency Platform · Private Residential Owner Data Kept Confidential
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <PWAInstallButton />
+            <button
+              type="button"
+              onClick={() => setBetaModalOpen(true)}
+              className="hover:text-slate-900 dark:hover:text-white underline font-semibold text-amber-700 dark:text-amber-400"
+            >
+              iOS Beta &amp; Paid Scout Program
+            </button>
             <button
               type="button"
               onClick={() => setSurvivalMode((s) => !s)}
@@ -306,11 +514,30 @@ export default function App() {
         </div>
       </footer>
 
+      <OfflineAndUpdateBanner
+        lastBackupAt={lastBackupAt}
+        pendingAuditsCount={audits.filter((a) => !a.syncedToServer).length}
+        onSyncNow={syncPendingAudits}
+      />
+
+      <BetaAppStoreModal
+        open={betaModalOpen}
+        onClose={() => setBetaModalOpen(false)}
+        enrollments={betaEnrollments}
+        onEnrolled={(entry) => setBetaEnrollments((prev) => [entry, ...prev])}
+        onLaunchAuditMode={() => {
+          setActiveTab('hazards');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+      />
+
       <AiGuideDrawer
         open={guideOpen}
         onClose={() => setGuideOpen(false)}
         contextSection={NAV_ITEMS.find((n) => n.id === activeTab)?.label || 'Workspace'}
         locationLabel={coords.label}
+        prefillQuestion={prefillGuideQuestion}
+        onClearPrefill={() => setPrefillGuideQuestion(null)}
       />
     </div>
   );

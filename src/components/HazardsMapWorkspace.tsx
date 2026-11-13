@@ -1,21 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertOctagon,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
   Compass,
   Droplets,
   ExternalLink,
   Flame,
   MapPin,
   Navigation,
+  Play,
   RefreshCw,
+  Square,
+  Video,
   Waves,
   Wind,
+  X,
 } from 'lucide-react';
 import type {
   AlmanacReport,
   Contractor,
+  FieldAuditRecord,
   GroundingSource,
   HazardAlert,
+  HazardGuidanceResult,
   LiveHazardSnapshot,
   PowerOutageReport,
 } from '../types';
@@ -56,8 +65,11 @@ interface Props {
   contractors: Contractor[];
   almanac: AlmanacReport[];
   powerOutages: PowerOutageReport[];
+  audits: FieldAuditRecord[];
+  onSaveAudit: (audit: FieldAuditRecord) => void;
   onAddAlmanac: (report: AlmanacReport) => void;
   onVerifyAlmanac: (id: string) => void;
+  onAskGuide: (question: string) => void;
 }
 
 export const HazardsMapWorkspace: React.FC<Props> = ({
@@ -66,8 +78,11 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
   contractors,
   almanac,
   powerOutages,
+  audits,
+  onSaveAudit,
   onAddAlmanac,
   onVerifyAlmanac,
+  onAskGuide,
 }) => {
   const [snapshot, setSnapshot] = useState<LiveHazardSnapshot | null>(null);
   const [loadingHazards, setLoadingHazards] = useState<boolean>(true);
@@ -84,12 +99,149 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
   const [showAlmanac, setShowAlmanac] = useState<boolean>(true);
   const [selectedPinInfo, setSelectedPinInfo] = useState<{ title: string; detail: string } | null>(null);
 
+  // Interactive Diagnostic Overlay State
+  const [selectedHazardType, setSelectedHazardType] = useState<string>('Flood & Groundwater');
+  const [diagOverlayOpen, setDiagOverlayOpen] = useState<boolean>(false);
+  const [hazardGuidance, setHazardGuidance] = useState<HazardGuidanceResult | null>(null);
+  const [loadingGuidance, setLoadingGuidance] = useState<boolean>(false);
+  const [guidanceError, setGuidanceError] = useState<string | null>(null);
+  const [diagStepIdx, setDiagStepIdx] = useState<number>(0);
+
+  // Live Camera & Video Audit Mode State
+  const [auditOpen, setAuditOpen] = useState<boolean>(false);
+  const [auditVenueType, setAuditVenueType] = useState<FieldAuditRecord['venueType']>('Home / Residential');
+  const [auditVenueName, setAuditVenueName] = useState<string>('');
+  const [auditWeekLabel, setAuditWeekLabel] = useState<string>('Week 1');
+  const [auditCleanlinessScore, setAuditCleanlinessScore] = useState<string>('45');
+  const [auditCosmeticCoverup, setAuditCosmeticCoverup] = useState<boolean>(false);
+  const [auditReporterName, setAuditReporterName] = useState<string>('');
+  const [auditNotes, setAuditNotes] = useState<string>('');
+  const [auditMediaType, setAuditMediaType] = useState<'photo' | 'video'>('photo');
+  const [auditMediaDataUrl, setAuditMediaDataUrl] = useState<string | undefined>(undefined);
+  const [cameraActive, setCameraActive] = useState<boolean>(false);
+  const [isRecordingVideo, setIsRecordingVideo] = useState<boolean>(false);
+  const [cameraStatus, setCameraStatus] = useState<string>('');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+
   // Almanac form
   const [conditionType, setConditionType] = useState<AlmanacReport['conditionType']>('High Water Table');
   const [waterDepthInches, setWaterDepthInches] = useState<string>('2.5');
   const [elevationNotes, setElevationNotes] = useState<string>('');
   const [reporterName, setReporterName] = useState<string>('');
   const [submittingReport, setSubmittingReport] = useState<boolean>(false);
+
+  const stopCamera = () => {
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+    setIsRecordingVideo(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  const launchDiagnosticOverlay = async (hazardType: string, alertContext?: string) => {
+    setSelectedHazardType(hazardType);
+    setDiagOverlayOpen(true);
+    setLoadingGuidance(true);
+    setGuidanceError(null);
+    setDiagStepIdx(0);
+    try {
+      const res = await fetch('/api/ai/hazard-guidance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hazardType,
+          locationLabel: coords.label,
+          alertContext,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not load AI hazard overlay.');
+      setHazardGuidance(data as HazardGuidanceResult);
+    } catch (err) {
+      setGuidanceError(err instanceof Error ? err.message : 'Unable to fetch hazard diagnostic overlay.');
+    } finally {
+      setLoadingGuidance(false);
+    }
+  };
+
+  const startLiveCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraStatus('Live camera API unavailable; use file photo/video upload below.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+      streamRef.current = stream;
+      setCameraActive(true);
+      setCameraStatus('Live Audit Camera active — snap a photo or record video.');
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 60);
+    } catch {
+      setCameraStatus('Camera permission denied or unavailable; attach photo/video directly below.');
+    }
+  };
+
+  const snapAuditPhoto = () => {
+    if (!videoRef.current) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth || 640;
+    canvas.height = videoRef.current.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+      setAuditMediaType('photo');
+      setAuditMediaDataUrl(dataUrl);
+      setCameraStatus('Timestamped photo captured into Audit Mode.');
+    }
+  };
+
+  const toggleVideoRecording = () => {
+    if (!streamRef.current) return;
+    if (isRecordingVideo && recorderRef.current) {
+      recorderRef.current.stop();
+      setIsRecordingVideo(false);
+      return;
+    }
+    const chunks: BlobPart[] = [];
+    const rec = new MediaRecorder(streamRef.current);
+    recorderRef.current = rec;
+    rec.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+    rec.onstop = () => {
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          setAuditMediaType('video');
+          setAuditMediaDataUrl(reader.result);
+          setCameraStatus('Audit video clip saved and ready for backup.');
+        }
+      };
+      reader.readAsDataURL(blob);
+    };
+    rec.start();
+    setIsRecordingVideo(true);
+    setCameraStatus('Recording Audit Mode video...');
+  };
 
   const loadHazards = async (lat: number, lon: number) => {
     setLoadingHazards(true);
@@ -489,14 +641,38 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
               </div>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600 dark:text-slate-400">
-            <span>Amber Pin: Your GPS</span>
-            <span aria-hidden="true">·</span>
-            <span>Red Circles: Live USGS Quakes</span>
-            <span aria-hidden="true">·</span>
-            <span>Blue Pins: Flood Almanac Reports</span>
-            <span aria-hidden="true">·</span>
-            <span>Green Squares: Live-Scan Verified Contractors</span>
+          <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-slate-600 dark:text-slate-400">
+            <div className="flex flex-wrap items-center gap-3">
+              <span>Amber Pin: Your GPS</span>
+              <span aria-hidden="true">·</span>
+              <span>Red Circles: Live USGS Quakes</span>
+              <span aria-hidden="true">·</span>
+              <span>Blue Pins: Flood Almanac Reports</span>
+              <span aria-hidden="true">·</span>
+              <span>Green Squares: Live-Scan Verified Contractors</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {['Flood & Groundwater', 'Earthquake / Seismic', 'Fire Weather & Smoke', 'Severe Storm & Wind'].map(
+                (hz) => (
+                  <button
+                    key={hz}
+                    type="button"
+                    onClick={() => launchDiagnosticOverlay(hz)}
+                    className="px-2.5 py-1 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white rounded-md whitespace-nowrap"
+                  >
+                    AI Overlay: {hz.split(' ')[0]}
+                  </button>
+                )
+              )}
+              <button
+                type="button"
+                onClick={() => setAuditOpen((v) => !v)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white rounded-md whitespace-nowrap"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                {auditOpen ? 'Close Audit Mode' : 'Audit Mode (Photo/Video)'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -515,7 +691,7 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
                 {snapshot.alerts.map((alert) => (
                   <div
                     key={alert.id}
-                    className="p-3 border border-slate-200 dark:border-slate-800 rounded-lg space-y-1"
+                    className="p-3 border border-slate-200 dark:border-slate-800 rounded-lg space-y-1.5"
                   >
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <span className={`font-bold ${renderSeverityStyle(alert.severity)}`}>
@@ -527,7 +703,16 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
                     </div>
                     <div className="text-xs font-semibold text-slate-900 dark:text-white">{alert.title}</div>
                     <p className="text-xs text-slate-600 dark:text-slate-300">{alert.description}</p>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Source: {alert.source}</div>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">Source: {alert.source}</span>
+                      <button
+                        type="button"
+                        onClick={() => launchDiagnosticOverlay(alert.type, `${alert.title}: ${alert.description}`)}
+                        className="text-xs font-semibold text-amber-700 dark:text-amber-400 hover:underline"
+                      >
+                        Repair Overlay & Videos →
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -546,7 +731,13 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
               <div className="divide-y divide-slate-200 dark:divide-slate-800 max-h-44 overflow-y-auto">
                 {snapshot.recentQuakes.slice(0, 5).map((q) => (
                   <div key={q.id} className="py-2 flex items-center justify-between gap-3 text-xs">
-                    <div className="truncate text-slate-800 dark:text-slate-200">{q.title}</div>
+                    <button
+                      type="button"
+                      onClick={() => launchDiagnosticOverlay('Earthquake / Seismic', q.title)}
+                      className="truncate text-left text-slate-800 dark:text-slate-200 hover:text-amber-600 dark:hover:text-amber-400"
+                    >
+                      {q.title}
+                    </button>
                     <div className="font-mono tabular-nums text-slate-500 dark:text-slate-400 shrink-0">
                       {q.distanceKm} km
                     </div>
@@ -561,6 +752,370 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
           </div>
         </div>
       </section>
+
+      {/* INTERACTIVE HAZARD DIAGNOSTIC OVERLAY (AI Step-by-Step Repair Guidance + Suggested Videos) */}
+      {diagOverlayOpen && (
+        <section className="bg-slate-900 text-white border border-amber-600/60 rounded-xl p-6 space-y-5 shadow-xl">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-800 pb-4">
+            <div>
+              <div className="text-xs font-mono text-amber-400">
+                INTERACTIVE HAZARD DIAGNOSTIC OVERLAY · {selectedHazardType.toUpperCase()} · {coords.label}
+              </div>
+              <h2 className="text-lg font-bold mt-1">
+                {hazardGuidance ? hazardGuidance.headline : `Generating AI Repair Plan & How-To Videos for ${selectedHazardType}...`}
+              </h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  onAskGuide(`Create a detailed DIY survival and repair checklist for ${selectedHazardType} in ${coords.label}`)
+                }
+                className="px-3 py-1.5 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white rounded-lg"
+              >
+                Ask AI Guide
+              </button>
+              <button
+                type="button"
+                onClick={() => setDiagOverlayOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg border border-slate-700"
+                aria-label="Close diagnostic overlay"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {loadingGuidance ? (
+            <div className="py-8 text-xs text-slate-300">
+              Analyzing {selectedHazardType} risks and retrieving code-compliant repair video tutorials...
+            </div>
+          ) : guidanceError ? (
+            <div className="p-4 bg-red-950/50 border border-red-800 rounded-lg text-xs text-red-200">{guidanceError}</div>
+          ) : hazardGuidance ? (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="lg:col-span-7 space-y-4">
+                <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-amber-200 leading-relaxed">
+                  <strong>Immediate Safety Protocol:</strong> {hazardGuidance.immediateSafetySummary}
+                </div>
+
+                {hazardGuidance.animatedSteps?.[diagStepIdx] && (
+                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-mono text-amber-400 font-bold">
+                        STEP {hazardGuidance.animatedSteps[diagStepIdx].stepNumber} OF{' '}
+                        {hazardGuidance.animatedSteps.length} ·{' '}
+                        {hazardGuidance.animatedSteps[diagStepIdx].actionType.toUpperCase()}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDiagStepIdx((i) => Math.max(0, i - 1))}
+                          className="p-1 border border-slate-700 rounded hover:bg-slate-800"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDiagStepIdx((i) => (i + 1) % hazardGuidance.animatedSteps.length)
+                          }
+                          className="p-1 border border-slate-700 rounded hover:bg-slate-800"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <h3 className="text-base font-bold text-white">
+                      {hazardGuidance.animatedSteps[diagStepIdx].title}
+                    </h3>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {hazardGuidance.animatedSteps[diagStepIdx].instruction}
+                    </p>
+                    <div className="flex flex-wrap gap-3 text-xs text-slate-400 pt-1">
+                      <span>Tool: {hazardGuidance.animatedSteps[diagStepIdx].toolNeeded}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>Material: {hazardGuidance.animatedSteps[diagStepIdx].materialSpec}</span>
+                      <span aria-hidden="true">·</span>
+                      <span className="font-mono text-amber-400">
+                        {hazardGuidance.animatedSteps[diagStepIdx].codeReference}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="lg:col-span-5 space-y-3">
+                <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <Play className="w-3.5 h-3.5 text-amber-400" />
+                  Suggested Code-Compliant How-To Repair Videos
+                </div>
+                <div className="space-y-2.5">
+                  {hazardGuidance.suggestedVideos.map((vid, idx) => (
+                    <a
+                      key={idx}
+                      href={vid.searchUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block p-3.5 bg-slate-950 border border-slate-800 hover:border-amber-500 rounded-lg space-y-1 transition-colors"
+                    >
+                      <div className="flex items-center justify-between text-[11px] font-mono text-amber-400">
+                        <span>{vid.codeStandard}</span>
+                        <span>{vid.durationEstimate}</span>
+                      </div>
+                      <div className="text-xs font-bold text-white flex items-center justify-between gap-2">
+                        <span>{vid.title}</span>
+                        <ExternalLink className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                      </div>
+                      <div className="text-xs text-slate-400">{vid.focus}</div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      )}
+
+      {/* AUDIT MODE: LIVE PHOTO / VIDEO CAPTURE FOR STORE, HOUSE OR BUSINESS + OFFLINE AUTO-BACKUP */}
+      {auditOpen && (
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
+            <div>
+              <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Field Evidence Audit Mode · Works Offline with Automatic Local Backup & Sync
+              </div>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-2">
+                <Video className="w-4 h-4 text-amber-600" />
+                Live Photo & Video Condition Audit (Store, House, or Business)
+              </h2>
+            </div>
+            <div className="flex items-center gap-2">
+              {!cameraActive ? (
+                <button
+                  type="button"
+                  onClick={startLiveCamera}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white rounded-lg"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  Start Live Camera
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={stopCamera}
+                  className="px-3 py-1.5 text-xs font-semibold border border-slate-300 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200"
+                >
+                  Stop Camera
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-6 space-y-3">
+              {cameraActive && (
+                <div className="space-y-2">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full rounded-lg bg-slate-950 border border-slate-800 aspect-video object-cover"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={snapAuditPhoto}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-900 dark:bg-amber-600 text-white rounded-lg"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      Snap Photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={toggleVideoRecording}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-white ${
+                        isRecordingVideo ? 'bg-red-600' : 'bg-slate-800'
+                      }`}
+                    >
+                      {isRecordingVideo ? <Square className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
+                      {isRecordingVideo ? 'Stop Recording' : 'Record Video Clip'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {cameraStatus && (
+                <div className="text-xs font-mono text-amber-700 dark:text-amber-300">{cameraStatus}</div>
+              )}
+
+              {auditMediaDataUrl && (
+                <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-2 bg-slate-50 dark:bg-slate-950">
+                  {auditMediaType === 'video' ? (
+                    <video src={auditMediaDataUrl} controls className="w-full max-h-56 rounded" />
+                  ) : (
+                    <img
+                      src={auditMediaDataUrl}
+                      alt="Captured audit condition"
+                      className="w-full max-h-56 object-cover rounded"
+                    />
+                  )}
+                </div>
+              )}
+
+              <label className="block text-xs text-slate-600 dark:text-slate-300">
+                Or Upload Photo / Video from Device:
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  capture="environment"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setAuditMediaType(file.type.startsWith('video') ? 'video' : 'photo');
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      if (typeof reader.result === 'string') setAuditMediaDataUrl(reader.result);
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                  className="mt-1 block w-full text-xs"
+                />
+              </label>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!auditVenueName.trim() || !auditNotes.trim()) return;
+                const record: FieldAuditRecord = {
+                  id: `aud-${Date.now()}`,
+                  venueType: auditVenueType,
+                  venueName: auditVenueName.trim(),
+                  locationLabel: coords.label,
+                  lat: coords.lat,
+                  lon: coords.lon,
+                  notes: auditNotes.trim(),
+                  weekLabel: auditVenueType !== 'Home / Residential' ? auditWeekLabel.trim() || 'Week 1' : undefined,
+                  cleanlinessScore:
+                    auditVenueType !== 'Home / Residential' ? Number(auditCleanlinessScore) || 45 : undefined,
+                  cosmeticCoverupDetected: auditCosmeticCoverup,
+                  reporterName: auditReporterName.trim() || undefined,
+                  mediaType: auditMediaType,
+                  mediaDataUrl: auditMediaDataUrl,
+                  capturedAt: new Date().toISOString(),
+                  syncedToServer: false,
+                };
+                onSaveAudit(record);
+                setAuditVenueName('');
+                setAuditNotes('');
+                setAuditCosmeticCoverup(false);
+                setAuditMediaDataUrl(undefined);
+                setCameraStatus('Audit saved & backed up locally (auto-syncing when online).');
+              }}
+              className="lg:col-span-6 space-y-3"
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <select
+                  value={auditVenueType}
+                  onChange={(e) => setAuditVenueType(e.target.value as FieldAuditRecord['venueType'])}
+                  className="px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                >
+                  <option value="Home / Residential">Home / Residential</option>
+                  <option value="Grocery Store">Grocery Store (+$20/$35 Scout Pay)</option>
+                  <option value="Restaurant / Food Business">Restaurant / Food Business (+$20/$35)</option>
+                  <option value="Storage Facility">Storage Facility (+$20/$35)</option>
+                  <option value="Hygiene / Cleaning Business">Hygiene / Cleaning Business (+$20/$35)</option>
+                  <option value="Commercial Building">Commercial Building (+$20/$35)</option>
+                </select>
+                <input
+                  type="text"
+                  required
+                  value={auditVenueName}
+                  onChange={(e) => setAuditVenueName(e.target.value)}
+                  placeholder="House, Store, Storage or Business Name"
+                  className="px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {auditVenueType !== 'Home / Residential' && (
+                <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      value={auditWeekLabel}
+                      onChange={(e) => setAuditWeekLabel(e.target.value)}
+                      placeholder="Week (Week 1)"
+                      className="px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={auditCleanlinessScore}
+                      onChange={(e) => setAuditCleanlinessScore(e.target.value)}
+                      placeholder="Cleanliness (0-100)"
+                      className="px-2.5 py-1.5 text-xs font-mono bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white"
+                    />
+                    <input
+                      type="text"
+                      value={auditReporterName}
+                      onChange={(e) => setAuditReporterName(e.target.value)}
+                      placeholder="Beta Scout Name"
+                      className="px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={auditCosmeticCoverup}
+                      onChange={(e) => setAuditCosmeticCoverup(e.target.checked)}
+                    />
+                    Cosmetic cover-up detected (hid grime/mold behind displays instead of cleaning)
+                  </label>
+                </div>
+              )}
+
+              <textarea
+                rows={3}
+                required
+                value={auditNotes}
+                onChange={(e) => setAuditNotes(e.target.value)}
+                placeholder="Document water intrusion, mold growth, pest signs, structural cracks, storage humidity, or cooler temperature..."
+                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+              />
+              <button
+                type="submit"
+                className="w-full py-2 px-4 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white rounded-lg"
+              >
+                Save Timestamped Audit &amp; Auto-Backup
+              </button>
+
+              {audits.length > 0 && (
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2 max-h-44 overflow-y-auto">
+                  <div className="text-xs font-bold text-slate-900 dark:text-white">
+                    Recent Saved Audits ({audits.length})
+                  </div>
+                  {audits.map((a) => (
+                    <div key={a.id} className="p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900 dark:text-white">
+                          {a.venueName} ({a.venueType})
+                        </span>
+                        <span className={a.syncedToServer ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}>
+                          {a.syncedToServer ? 'Synced' : 'Local Backup (Offline)'}
+                        </span>
+                      </div>
+                      <p className="text-slate-600 dark:text-slate-300 mt-0.5">{a.notes}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </form>
+          </div>
+        </section>
+      )}
 
       {/* Gemini Grounded Municipal Water Table, Pumping Stations & Fault History */}
       <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-5">

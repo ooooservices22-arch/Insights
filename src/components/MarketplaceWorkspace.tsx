@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   BadgeCheck,
   Calendar,
@@ -19,6 +19,8 @@ const CATEGORIES: Array<'All' | ContractorCategory> = [
   'General C-10 (Electrical)',
   'General Z (Specialty / Foundation)',
   'IICRC Restoration',
+  'HVAC & Sealed-Air Systems',
+  'Virtual Job Inspector',
   'Structural Engineer',
   'Industrial Hygienist',
   'Property Attorney',
@@ -32,8 +34,10 @@ interface Props {
   initialFilter?: string;
   onAddContractor: (c: Contractor) => void;
   onAddBooking: (b: Booking) => void;
+  onUpdateBooking: (b: Booking) => void;
   onAddGig: (g: FieldGig) => void;
   onUpdateGig: (g: FieldGig) => void;
+  onOpenBetaProgram: () => void;
 }
 
 export const MarketplaceWorkspace: React.FC<Props> = ({
@@ -43,10 +47,15 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
   initialFilter,
   onAddContractor,
   onAddBooking,
+  onUpdateBooking,
   onAddGig,
   onUpdateGig,
+  onOpenBetaProgram,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>(initialFilter || '');
+  useEffect(() => {
+    if (initialFilter) setSearchQuery(initialFilter);
+  }, [initialFilter]);
   const [selectedCategory, setSelectedCategory] = useState<'All' | ContractorCategory>('All');
   const [onlyLiveScan, setOnlyLiveScan] = useState<boolean>(false);
   const [onlyIicrc, setOnlyIicrc] = useState<boolean>(false);
@@ -113,7 +122,12 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
         serviceMode,
         scheduledDate,
         issueSummary,
-        feeUsd: serviceMode === 'Virtual Diagnostic' ? bookingTarget.virtualConsultFee : bookingTarget.hourlyRate,
+        feeUsd:
+          serviceMode === 'Virtual Diagnostic'
+            ? bookingTarget.virtualConsultFee
+            : serviceMode === 'Start-to-Finish Virtual Inspector'
+              ? Math.max(45, bookingTarget.virtualConsultFee)
+              : bookingTarget.hourlyRate,
       }),
     });
     if (res.ok) {
@@ -450,7 +464,7 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
               photos, measurements, and moisture readings.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               type="text"
               value={scoutName}
@@ -458,6 +472,13 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
               placeholder="Your name to claim gigs"
               className="px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
             />
+            <button
+              type="button"
+              onClick={onOpenBetaProgram}
+              className="px-3.5 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white rounded-lg whitespace-nowrap shrink-0"
+            >
+              iOS Beta &amp; Scout Hiring Track
+            </button>
             <button
               type="button"
               onClick={() => setShowPostGig((v) => !v)}
@@ -590,24 +611,98 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
         </div>
       </section>
 
-      {/* Active Bookings Table */}
+      {/* Active Bookings & Start-to-Finish Virtual Inspector Milestones */}
       {bookings.length > 0 && (
-        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-3">
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-4">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            Your Scheduled Inspections & Equipment Rentals
+            Scheduled Inspections, Virtual Job Supervision & Equipment Rentals
           </h3>
           <div className="divide-y divide-slate-200 dark:divide-slate-800">
             {bookings.map((b) => (
-              <div key={b.id} className="py-2.5 flex flex-wrap items-center justify-between gap-4 text-xs">
-                <div>
-                  <span className="font-semibold text-slate-900 dark:text-white">{b.contractorName}</span>
-                  <span className="text-slate-500 dark:text-slate-400"> · {b.serviceMode}</span>
-                  <div className="text-slate-600 dark:text-slate-300">{b.issueSummary}</div>
+              <div key={b.id} className="py-3 space-y-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <span className="font-semibold text-slate-900 dark:text-white">{b.contractorName}</span>
+                    <span className="text-slate-500 dark:text-slate-400"> · {b.serviceMode}</span>
+                    <div className="text-slate-600 dark:text-slate-300 mt-0.5">{b.issueSummary}</div>
+                  </div>
+                  <div className="font-mono tabular-nums text-slate-700 dark:text-slate-200">
+                    {b.scheduledDate} · ${b.feeUsd} · {b.status}
+                  </div>
                 </div>
-                <div className="font-mono tabular-nums text-slate-700 dark:text-slate-200">
-                  {b.scheduledDate} · ${b.feeUsd} · {b.status}
-                </div>
+
+                {b.milestones && b.milestones.length > 0 && (
+                  <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2">
+                    <div className="font-semibold text-slate-800 dark:text-slate-200">
+                      Start-to-Finish Virtual Inspector Checkpoints (Catch Mistakes Before Closeout)
+                    </div>
+                    <div className="divide-y divide-slate-200 dark:divide-slate-800">
+                      {b.milestones.map((m, mIdx) => (
+                        <div
+                          key={mIdx}
+                          className="py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                        >
+                          <div>
+                            <div className="font-medium text-slate-900 dark:text-white">
+                              {mIdx + 1}. {m.stage}
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">{m.note}</div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span
+                              className={`font-semibold ${
+                                m.status === 'Passed'
+                                  ? 'text-emerald-700 dark:text-emerald-400'
+                                  : m.status === 'Correction Needed'
+                                    ? 'text-red-700 dark:text-red-400'
+                                    : 'text-amber-700 dark:text-amber-400'
+                              }`}
+                            >
+                              {m.status}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const res = await fetch(`/api/bookings/${b.id}/milestone`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    stageIndex: mIdx,
+                                    status: 'Passed',
+                                    note: 'Code compliance verified via live camera feed.',
+                                  }),
+                                });
+                                if (res.ok) onUpdateBooking((await res.json()) as Booking);
+                              }}
+                              className="px-2 py-1 border border-emerald-400 text-emerald-700 dark:text-emerald-300 rounded hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                            >
+                              Pass Stage
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const res = await fetch(`/api/bookings/${b.id}/milestone`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    stageIndex: mIdx,
+                                    status: 'Correction Needed',
+                                    note: 'Work halted — contractor instructed to fix code discrepancy prior to sign-off.',
+                                  }),
+                                });
+                                if (res.ok) onUpdateBooking((await res.json()) as Booking);
+                              }}
+                              className="px-2 py-1 border border-red-400 text-red-700 dark:text-red-300 rounded hover:bg-red-50 dark:hover:bg-red-950/40"
+                            >
+                              Flag Correction
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -651,6 +746,9 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
                 >
                   <option value="Virtual Diagnostic">
                     Virtual Diagnostic (${bookingTarget.virtualConsultFee})
+                  </option>
+                  <option value="Start-to-Finish Virtual Inspector">
+                    Start-to-Finish Virtual Job Inspector (${Math.max(45, bookingTarget.virtualConsultFee)}/phase)
                   </option>
                   <option value="On-Site Inspection">On-Site Inspection (${bookingTarget.hourlyRate}/hr)</option>
                   <option value="Legal / Hygienist Consult">Legal / Hygienist Virtual Review</option>

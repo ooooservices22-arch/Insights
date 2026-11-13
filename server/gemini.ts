@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import type { DamageAnalysisResult, GroundingSource } from '../src/types.ts';
+import type { DamageAnalysisResult, GroundingSource, HazardGuidanceResult } from '../src/types.ts';
 
 function getClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -251,4 +251,62 @@ Return ONLY valid JSON:
       reason: 'Queued for standard evidence and fact-check verification prior to public display.',
     };
   }
+}
+
+export async function generateHazardGuidance(params: {
+  hazardType: string;
+  locationLabel: string;
+  alertContext?: string;
+}): Promise<HazardGuidanceResult> {
+  const ai = getClient();
+  const prompt = `You are an emergency structural recovery specialist and code-compliant DIY instructor for "insights".
+Generate an interactive repair & mitigation diagnostic plan for hazard type: "${params.hazardType}" at location: "${params.locationLabel}".
+${params.alertContext ? `Active sensor/alert context: ${params.alertContext}` : ''}
+
+Use Google Search grounding to align with FEMA, USGS, ICC/IRC, IICRC S500, or NFPA standards.
+Return ONLY valid JSON matching this schema:
+{
+  "hazardType": "${params.hazardType}",
+  "locationLabel": "${params.locationLabel}",
+  "headline": "Short actionable headline",
+  "immediateSafetySummary": "2-sentence immediate safety & utility shutoff check before starting repairs",
+  "suggestedVideos": [
+    {
+      "title": "Specific how-to repair video tutorial title",
+      "focus": "Exact structural/drainage/seismic/smoke task demonstrated",
+      "durationEstimate": "6–9 min",
+      "codeStandard": "FEMA / IRC / IICRC code section",
+      "searchUrl": "https://www.youtube.com/results?search_query=..."
+    }
+  ],
+  "animatedSteps": [
+    {
+      "stepNumber": 1,
+      "title": "Short step title",
+      "instruction": "Exact step-by-step action for the property owner",
+      "actionType": "inspect" | "seal" | "drain" | "cut" | "test" | "ventilate",
+      "targetX": 50,
+      "targetY": 50,
+      "toolNeeded": "Specific tool",
+      "materialSpec": "Material spec",
+      "codeReference": "Code ref",
+      "sourceQueryUrl": "https://www.fema.gov/"
+    }
+  ]
+}
+Include 3 targeted suggestedVideos and 4–5 animatedSteps with targetX/targetY between 18 and 82.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-4-hydrogen',
+    contents: prompt,
+    config: {
+      tools: [{ googleSearch: {} }],
+    },
+  });
+
+  const parsed = extractJsonBlock<Omit<HazardGuidanceResult, 'sources'>>(response.text ?? '');
+  return {
+    ...parsed,
+    sources: extractGroundingSources(response),
+  };
 }
