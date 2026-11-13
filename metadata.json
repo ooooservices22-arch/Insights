@@ -1,0 +1,6 @@
+{
+  "name": "insights",
+  "description": "Glass-wall property intelligence, AI structural damage diagnostics, live GPS disaster alerts, verified contractor marketplace, and community almanac.",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
