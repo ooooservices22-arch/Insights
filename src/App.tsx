@@ -18,12 +18,14 @@ import type {
   ContractorReview,
   EmergencyMessage,
   FamilyCrowdfundCampaign,
+  FeatureRequest,
   FieldAuditRecord,
   FieldGig,
   FormerEmployeeInsight,
   ForumPost,
   GrocerySanitationReport,
   PowerOutageReport,
+  PublicCloudAgencyRecord,
   StoreItem,
   StoreOrder,
   UsedEquipmentListing,
@@ -66,6 +68,8 @@ export default function App() {
   const [formerEmployeeInsights, setFormerEmployeeInsights] = useState<FormerEmployeeInsight[]>([]);
   const [crowdfundCampaigns, setCrowdfundCampaigns] = useState<FamilyCrowdfundCampaign[]>([]);
   const [betaEnrollments, setBetaEnrollments] = useState<BetaScoutProgramEnrollment[]>([]);
+  const [publicCloudRecords, setPublicCloudRecords] = useState<PublicCloudAgencyRecord[]>([]);
+  const [featureRequests, setFeatureRequests] = useState<FeatureRequest[]>([]);
   const [storeItems, setStoreItems] = useState<StoreItem[]>([]);
   const [storeOrders, setStoreOrders] = useState<StoreOrder[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -104,6 +108,8 @@ export default function App() {
           exRes,
           cfRes,
           betaRes,
+          cloudRes,
+          frRes,
         ] = await Promise.all([
           fetch('/api/contractors'),
           fetch('/api/reviews'),
@@ -121,6 +127,8 @@ export default function App() {
           fetch('/api/ex-employer-insights'),
           fetch('/api/crowdfund'),
           fetch('/api/beta-program'),
+          fetch('/api/public-cloud-db'),
+          fetch('/api/feature-requests'),
         ]);
         if (!active) return;
 
@@ -154,6 +162,10 @@ export default function App() {
 
         const betaPayload = await betaRes.json();
         setBetaEnrollments(betaPayload.enrollments || []);
+
+        const cloudPayload = await cloudRes.json();
+        setPublicCloudRecords(cloudPayload.records || []);
+        setFeatureRequests(await frRes.json());
       } catch (err) {
         if (!active) return;
         const cached = loadOfflineBackup();
@@ -176,6 +188,8 @@ export default function App() {
           setFormerEmployeeInsights(cached.formerEmployeeInsights || []);
           setCrowdfundCampaigns(cached.crowdfundCampaigns || []);
           setBetaEnrollments(cached.betaEnrollments || []);
+          setPublicCloudRecords(cached.publicCloudRecords || []);
+          setFeatureRequests(cached.featureRequests || []);
           setLastBackupAt(cached.savedAt);
           setLoadError(null);
         } else {
@@ -214,6 +228,8 @@ export default function App() {
       formerEmployeeInsights,
       crowdfundCampaigns,
       betaEnrollments,
+      publicCloudRecords,
+      featureRequests,
     });
     setLastBackupAt(stamped);
   }, [
@@ -236,6 +252,8 @@ export default function App() {
     formerEmployeeInsights,
     crowdfundCampaigns,
     betaEnrollments,
+    publicCloudRecords,
+    featureRequests,
   ]);
 
   const handleSaveAudit = async (audit: FieldAuditRecord) => {
@@ -415,6 +433,7 @@ export default function App() {
                 fieldGigs={fieldGigs}
                 initialFilter={marketplaceFilter}
                 onAddContractor={(c) => setContractors((prev) => [c, ...prev])}
+                onUpdateContractor={(c) => setContractors((prev) => prev.map((x) => (x.id === c.id ? c : x)))}
                 onAddBooking={(b) => setBookings((prev) => [b, ...prev])}
                 onUpdateBooking={(b) => setBookings((prev) => prev.map((x) => (x.id === b.id ? b : x)))}
                 onAddGig={(g) => setFieldGigs((prev) => [g, ...prev])}
@@ -432,6 +451,9 @@ export default function App() {
                 abandonedHazards={abandonedHazards}
                 groceryReports={groceryReports}
                 formerEmployeeInsights={formerEmployeeInsights}
+                publicCloudRecords={publicCloudRecords}
+                featureRequests={featureRequests}
+                defaultLocationLabel={coords.label}
                 onAddReview={(r) => setReviews((prev) => [r, ...prev])}
                 onUpdateReview={(r) => setReviews((prev) => prev.map((x) => (x.id === r.id ? r : x)))}
                 onAddBlacklist={(b) => setBlacklist((prev) => [b, ...prev])}
@@ -449,6 +471,14 @@ export default function App() {
                 onAddFormerEmployeeInsight={(ex) => setFormerEmployeeInsights((prev) => [ex, ...prev])}
                 onUpdateFormerEmployeeInsight={(ex) =>
                   setFormerEmployeeInsights((prev) => prev.map((x) => (x.id === ex.id ? ex : x)))
+                }
+                onAddPublicCloudRecord={(rec) => setPublicCloudRecords((prev) => [rec, ...prev])}
+                onUpdatePublicCloudRecord={(rec) =>
+                  setPublicCloudRecords((prev) => prev.map((x) => (x.id === rec.id ? rec : x)))
+                }
+                onAddFeatureRequest={(req) => setFeatureRequests((prev) => [req, ...prev])}
+                onUpdateFeatureRequest={(req) =>
+                  setFeatureRequests((prev) => prev.map((x) => (x.id === req.id ? req : x)))
                 }
                 onOpenBetaProgram={() => setBetaModalOpen(true)}
               />
@@ -538,6 +568,7 @@ export default function App() {
         locationLabel={coords.label}
         prefillQuestion={prefillGuideQuestion}
         onClearPrefill={() => setPrefillGuideQuestion(null)}
+        onFeatureRequested={(req) => setFeatureRequests((prev) => [req, ...prev])}
       />
     </div>
   );

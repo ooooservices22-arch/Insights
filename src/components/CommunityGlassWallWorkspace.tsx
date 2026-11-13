@@ -6,8 +6,13 @@ import {
   CalendarClock,
   Camera,
   CheckCircle2,
+  Cloud,
+  Download,
+  ExternalLink,
   FileCheck2,
+  Lightbulb,
   MessageSquare,
+  RefreshCw,
   Scale,
   ShieldAlert,
   Smartphone,
@@ -20,10 +25,12 @@ import type {
   Contractor,
   ContractorReview,
   EvidenceMedia,
+  FeatureRequest,
   FormerEmployeeInsight,
   ForumCategory,
   ForumPost,
   GrocerySanitationReport,
+  PublicCloudAgencyRecord,
 } from '../types';
 
 interface Props {
@@ -34,6 +41,9 @@ interface Props {
   abandonedHazards: AbandonedHazardReport[];
   groceryReports: GrocerySanitationReport[];
   formerEmployeeInsights: FormerEmployeeInsight[];
+  publicCloudRecords: PublicCloudAgencyRecord[];
+  featureRequests: FeatureRequest[];
+  defaultLocationLabel: string;
   onAddReview: (r: ContractorReview) => void;
   onUpdateReview: (r: ContractorReview) => void;
   onAddBlacklist: (b: BlacklistEntry) => void;
@@ -46,6 +56,10 @@ interface Props {
   onUpdateGroceryReport: (g: GrocerySanitationReport) => void;
   onAddFormerEmployeeInsight: (ex: FormerEmployeeInsight) => void;
   onUpdateFormerEmployeeInsight: (ex: FormerEmployeeInsight) => void;
+  onAddPublicCloudRecord: (rec: PublicCloudAgencyRecord) => void;
+  onUpdatePublicCloudRecord: (rec: PublicCloudAgencyRecord) => void;
+  onAddFeatureRequest: (req: FeatureRequest) => void;
+  onUpdateFeatureRequest: (req: FeatureRequest) => void;
   onOpenBetaProgram: () => void;
 }
 
@@ -57,6 +71,9 @@ export const CommunityGlassWallWorkspace: React.FC<Props> = ({
   abandonedHazards,
   groceryReports,
   formerEmployeeInsights,
+  publicCloudRecords,
+  featureRequests,
+  defaultLocationLabel,
   onAddReview,
   onUpdateReview,
   onAddBlacklist,
@@ -69,11 +86,15 @@ export const CommunityGlassWallWorkspace: React.FC<Props> = ({
   onUpdateGroceryReport,
   onAddFormerEmployeeInsight,
   onUpdateFormerEmployeeInsight,
+  onAddPublicCloudRecord,
+  onUpdatePublicCloudRecord,
+  onAddFeatureRequest,
+  onUpdateFeatureRequest,
   onOpenBetaProgram,
 }) => {
-  const [subTab, setSubTab] = useState<'forum' | 'reviews' | 'blacklist' | 'abandoned' | 'grocery' | 'ex_employers'>(
-    'forum'
-  );
+  const [subTab, setSubTab] = useState<
+    'forum' | 'reviews' | 'blacklist' | 'abandoned' | 'grocery' | 'ex_employers' | 'public_cloud' | 'feature_requests'
+  >('forum');
 
   // Forum state
   const [forumFilter, setForumFilter] = useState<string>('All');
@@ -162,6 +183,25 @@ export const CommunityGlassWallWorkspace: React.FC<Props> = ({
   const [exProofCaption, setExProofCaption] = useState<string>('');
   const [exMediaDataUrl, setExMediaDataUrl] = useState<string | undefined>(undefined);
   const [exFeedback, setExFeedback] = useState<string | null>(null);
+
+  // Public iCloud Multi-Agency Fact-Checked Database state
+  const [cloudTopicFilter, setCloudTopicFilter] = useState<string>('All');
+  const [cloudTitle, setCloudTitle] = useState<string>('');
+  const [cloudTopic, setCloudTopic] = useState<PublicCloudAgencyRecord['topicCategory']>('Air Quality & Emissions');
+  const [cloudLocation, setCloudLocation] = useState<string>(defaultLocationLabel);
+  const [cloudClaim, setCloudClaim] = useState<string>('');
+  const [cloudSubmitting, setCloudSubmitting] = useState<boolean>(false);
+  const [cloudFeedback, setCloudFeedback] = useState<string | null>(null);
+  const [reverifyingId, setReverifyingId] = useState<string | null>(null);
+
+  // Unsupported Feature Requests board state
+  const [frFilter, setFrFilter] = useState<string>('All');
+  const [frTitle, setFrTitle] = useState<string>('');
+  const [frCategory, setFrCategory] = useState<FeatureRequest['category']>('Diagnostics & AI');
+  const [frUser, setFrUser] = useState<string>('');
+  const [frDesc, setFrDesc] = useState<string>('');
+  const [frSubmitting, setFrSubmitting] = useState<boolean>(false);
+  const [frFeedback, setFrFeedback] = useState<string | null>(null);
 
   const readUpload = (file: File | undefined, cb: (url: string) => void) => {
     if (!file) return;
@@ -406,6 +446,85 @@ export const CommunityGlassWallWorkspace: React.FC<Props> = ({
     );
   };
 
+  const handleSubmitCloudClaim = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cloudTitle.trim() || !cloudClaim.trim()) return;
+    setCloudSubmitting(true);
+    setCloudFeedback(null);
+    try {
+      const res = await fetch('/api/public-cloud-db/cross-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: cloudTitle.trim(),
+          topicCategory: cloudTopic,
+          region: cloudLocation.trim() || defaultLocationLabel,
+          claimOrMetric: cloudClaim.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to cross-check claim.');
+      onAddPublicCloudRecord(data as PublicCloudAgencyRecord);
+      setCloudTitle('');
+      setCloudClaim('');
+      setCloudFeedback(
+        `Synced to Public iCloud Container (${(data as PublicCloudAgencyRecord).consensusStatus}).`
+      );
+    } catch (err) {
+      setCloudFeedback(err instanceof Error ? err.message : 'Unable to cross-check claim.');
+    } finally {
+      setCloudSubmitting(false);
+    }
+  };
+
+  const handleDownloadOpenCloudJson = () => {
+    const payload = {
+      containerIdentifier: 'iCloud.app.insights.public.truthledger',
+      accessTier: 'Public Open Read / Audited Write',
+      exportedAt: new Date().toISOString(),
+      recordCount: publicCloudRecords.length,
+      records: publicCloudRecords,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `insights-public-icloud-ledger-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleSubmitFeatureRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!frTitle.trim() || !frDesc.trim()) return;
+    setFrSubmitting(true);
+    setFrFeedback(null);
+    try {
+      const res = await fetch('/api/feature-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: frTitle.trim(),
+          category: frCategory,
+          requestedBy: frUser.trim() || 'Community Member',
+          description: frDesc.trim(),
+          locationContext: `Feature Request Board (${defaultLocationLabel})`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to submit request.');
+      const created = data as FeatureRequest;
+      onAddFeatureRequest(created);
+      setFrTitle('');
+      setFrDesc('');
+      setFrFeedback(`Request queued (${created.status}). ${created.aiScopeNote || ''}`);
+    } catch (err) {
+      setFrFeedback(err instanceof Error ? err.message : 'Failed to queue feature request.');
+    } finally {
+      setFrSubmitting(false);
+    }
+  };
+
   const filteredPosts = forum.filter((p) => forumFilter === 'All' || p.category === forumFilter);
   const filteredReviews = reviews.filter((r) => revFilter === 'All' || (r.subjectType || 'Contractor') === revFilter);
   const filteredBlacklist = blacklist.filter((b) => blTypeFilter === 'All' || b.subjectType === blTypeFilter);
@@ -413,6 +532,12 @@ export const CommunityGlassWallWorkspace: React.FC<Props> = ({
   const filteredExEmployers = formerEmployeeInsights.filter(
     (x) => exSectorFilter === 'All' || x.businessSector === exSectorFilter
   );
+  const filteredCloudRecords = publicCloudRecords.filter(
+    (r) => cloudTopicFilter === 'All' || r.topicCategory === cloudTopicFilter
+  );
+  const filteredFeatureRequests = [...featureRequests]
+    .filter((f) => frFilter === 'All' || f.category === frFilter)
+    .sort((a, b) => b.votes - a.votes);
 
   // Group multi-week store audits to expose week-after-week cosmetic cover-ups vs real cleaning
   const multiWeekStoreGroups = Array.from(
@@ -452,6 +577,8 @@ export const CommunityGlassWallWorkspace: React.FC<Props> = ({
               { id: 'abandoned', label: 'Abandoned Watch' },
               { id: 'grocery', label: 'Weekly Store & Hygiene Audits' },
               { id: 'ex_employers', label: 'Ex-Employee Insights' },
+              { id: 'public_cloud', label: 'Public iCloud Agency DB' },
+              { id: 'feature_requests', label: 'Feature Requests' },
             ].map((t) => (
               <button
                 key={t.id}
@@ -2025,6 +2152,400 @@ export const CommunityGlassWallWorkspace: React.FC<Props> = ({
               className="w-full py-2 px-4 text-xs font-semibold bg-slate-900 dark:bg-amber-600 hover:bg-slate-800 dark:hover:bg-amber-500 text-white rounded-lg"
             >
               Publish Ex-Employer Insider Report
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* SUB-TAB 7: OPEN PUBLIC ICLOUD MULTI-AGENCY FACT-CHECKED DATABASE */}
+      {subTab === 'public_cloud' && (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                <Cloud className="w-4 h-4" />
+                Open Public iCloud CloudKit Database · Container: <code className="font-mono">iCloud.app.insights.public.truthledger</code>
+              </div>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                Multi-Agency Cross-Checked Public Truth Database
+              </h2>
+              <p className="text-xs text-slate-600 dark:text-slate-300 max-w-3xl">
+                Every hazard map, floodplain grade, air quality metric, food recall, and licensing claim is continuously
+                cross-checked across NOAA/NWS, USGS, US EPA, FEMA, CDC, FDA, OSHA, and State Licensing Boards. Discrepancies
+                between agencies are flagged openly and downloadable by anyone.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDownloadOpenCloudJson}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-900 dark:text-white rounded-lg whitespace-nowrap shrink-0"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export Open Public JSON
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-8 space-y-4">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  'All',
+                  'Air Quality & Emissions',
+                  'Water & Contamination',
+                  'Flood & Seismic Zone',
+                  'Food Cold-Chain & Hygiene',
+                  'Contractor & Licensing',
+                  'Disaster Infrastructure',
+                ].map((topic) => (
+                  <button
+                    key={topic}
+                    type="button"
+                    onClick={() => setCloudTopicFilter(topic)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border whitespace-nowrap shrink-0 ${
+                      cloudTopicFilter === topic
+                        ? 'bg-slate-900 dark:bg-amber-600 text-white border-transparent'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {topic}
+                  </button>
+                ))}
+              </div>
+
+              {filteredCloudRecords.map((rec) => {
+                const discrepancies = rec.agencyChecks.filter((c) => c.status === 'Discrepancy Flagged');
+                return (
+                  <article
+                    key={rec.id}
+                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-500 dark:text-slate-400">
+                        <strong className="text-slate-800 dark:text-slate-200">{rec.topicCategory}</strong> · {rec.region} ·{' '}
+                        <span className="font-mono text-[11px]">{rec.cloudKitRecordType}</span>
+                      </span>
+                      <span
+                        className={`font-semibold ${
+                          rec.consensusStatus === 'Multi-Agency Verified'
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-red-700 dark:text-red-400'
+                        }`}
+                      >
+                        {rec.consensusStatus} · {rec.agencyChecks.length} Agencies Checked
+                      </span>
+                    </div>
+
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">{rec.title}</h3>
+                    <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{rec.claimOrMetric}</p>
+
+                    {discrepancies.length > 0 && (
+                      <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg text-xs text-red-800 dark:text-red-200">
+                        <strong>Inter-Agency Discrepancy Flagged:</strong>{' '}
+                        {discrepancies.map((d) => `${d.agency}: ${d.finding}`).join(' | ')}
+                      </div>
+                    )}
+
+                    <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-lg">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                          <tr>
+                            <th className="py-2 px-3 font-medium">Agency</th>
+                            <th className="py-2 px-3 font-medium">Stance</th>
+                            <th className="py-2 px-3 font-medium">Verified Finding</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                          {rec.agencyChecks.map((chk, i) => (
+                            <tr key={i}>
+                              <td className="py-2 px-3 font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                                {chk.agency}
+                              </td>
+                              <td
+                                className={`py-2 px-3 font-medium whitespace-nowrap ${
+                                  chk.status === 'Corroborated'
+                                    ? 'text-emerald-700 dark:text-emerald-400'
+                                    : chk.status === 'Discrepancy Flagged'
+                                      ? 'text-red-700 dark:text-red-400'
+                                      : 'text-amber-700 dark:text-amber-400'
+                                }`}
+                              >
+                                {chk.status}
+                              </td>
+                              <td className="py-2 px-3 text-slate-600 dark:text-slate-300">
+                                <div>{chk.finding}</div>
+                                {chk.sourceUrl && (
+                                  <a
+                                    href={chk.sourceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400 hover:underline mt-0.5"
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                    Agency Source
+                                  </a>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs">
+                      <span className="text-slate-500 dark:text-slate-400 tabular-nums">
+                        Last cross-checked: {new Date(rec.lastCrossCheckedAt).toLocaleString()}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={reverifyingId === rec.id}
+                          onClick={async () => {
+                            setReverifyingId(rec.id);
+                            try {
+                              const res = await fetch(`/api/public-cloud-db/${rec.id}/reverify`, {
+                                method: 'POST',
+                              });
+                              if (res.ok) onUpdatePublicCloudRecord((await res.json()) as PublicCloudAgencyRecord);
+                            } finally {
+                              setReverifyingId(null);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-amber-500 rounded"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${reverifyingId === rec.id ? 'animate-spin' : ''}`} />
+                          {reverifyingId === rec.id ? 'Checking Agencies...' : 'Re-Verify Across Agencies'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const res = await fetch(`/api/public-cloud-db/${rec.id}/upvote`, { method: 'POST' });
+                            if (res.ok) onUpdatePublicCloudRecord((await res.json()) as PublicCloudAgencyRecord);
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded tabular-nums"
+                        >
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          Confirm Accuracy ({rec.upvotes})
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <form
+              onSubmit={handleSubmitCloudClaim}
+              className="lg:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3 h-fit"
+            >
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+                <Cloud className="w-4 h-4 text-amber-600" />
+                Submit Fact to Multi-Agency Cross-Check
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Enter any hazard, utility, water, or contamination claim. We fact-check it against NOAA, USGS, US EPA,
+                FEMA, CDC, and state agencies and publish it to the open public iCloud ledger.
+              </p>
+              <select
+                value={cloudTopic}
+                onChange={(e) => setCloudTopic(e.target.value as PublicCloudAgencyRecord['topicCategory'])}
+                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+              >
+                <option value="Air Quality & Emissions">Air Quality &amp; Emissions</option>
+                <option value="Water & Contamination">Water &amp; Contamination</option>
+                <option value="Flood & Seismic Zone">Flood &amp; Seismic Zone</option>
+                <option value="Food Cold-Chain & Hygiene">Food Cold-Chain &amp; Hygiene</option>
+                <option value="Contractor & Licensing">Contractor &amp; Licensing</option>
+                <option value="Disaster Infrastructure">Disaster Infrastructure</option>
+              </select>
+              <input
+                type="text"
+                required
+                value={cloudTitle}
+                onChange={(e) => setCloudTitle(e.target.value)}
+                placeholder="Claim Headline (e.g. PFAS levels in municipal well #4)"
+                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+              />
+              <input
+                type="text"
+                value={cloudLocation}
+                onChange={(e) => setCloudLocation(e.target.value)}
+                placeholder="City / ZIP / County"
+                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+              />
+              <textarea
+                rows={4}
+                required
+                value={cloudClaim}
+                onChange={(e) => setCloudClaim(e.target.value)}
+                placeholder="Describe the claim, date, measurement, or discrepancy you want checked across government databases..."
+                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+              />
+              {cloudFeedback && <div className="text-xs text-amber-700 dark:text-amber-300">{cloudFeedback}</div>}
+              <button
+                type="submit"
+                disabled={cloudSubmitting}
+                className="w-full py-2 px-4 text-xs font-semibold bg-slate-900 dark:bg-amber-600 hover:bg-slate-800 dark:hover:bg-amber-500 text-white rounded-lg"
+              >
+                {cloudSubmitting ? 'Querying Agencies...' : 'Cross-Check & Publish to iCloud DB'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB 8: REQUEST UNSUPPORTED FEATURES BOARD */}
+      {subTab === 'feature_requests' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-8 space-y-4">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                  Community Unsupported Feature Queue
+                </h2>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                  Ask for any capability not supported yet—right here or inside the AI Guide drawer when it cannot do
+                  something yet. Requests are scoped and ranked by community votes.
+                </p>
+              </div>
+              <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 tabular-nums whitespace-nowrap">
+                {featureRequests.length} Open Requests
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[
+                'All',
+                'Diagnostics & AI',
+                'Hazards & Weather',
+                'Contractor Verification',
+                'Store & Rentals',
+                'Public Database & Offline',
+                'Other Unsupported Feature',
+              ].map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setFrFilter(cat)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border whitespace-nowrap shrink-0 ${
+                    frFilter === cat
+                      ? 'bg-slate-900 dark:bg-amber-600 text-white border-transparent'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {filteredFeatureRequests.map((req) => (
+              <div
+                key={req.id}
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-slate-500 dark:text-slate-400">
+                    <strong className="text-slate-800 dark:text-slate-200">{req.category}</strong> · Requested by{' '}
+                    {req.requestedBy}
+                    {req.locationContext ? ` · ${req.locationContext}` : ''}
+                  </span>
+                  <span
+                    className={`font-semibold ${
+                      req.status === 'In Beta Build'
+                        ? 'text-emerald-700 dark:text-emerald-400'
+                        : 'text-amber-700 dark:text-amber-400'
+                    }`}
+                  >
+                    {req.status}
+                  </span>
+                </div>
+
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Lightbulb className="w-4 h-4 text-amber-600 shrink-0" />
+                  {req.title}
+                </h3>
+
+                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{req.description}</p>
+
+                {req.aiScopeNote && (
+                  <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-600 dark:text-slate-300">
+                    <strong>Technical Scope Note:</strong> {req.aiScopeNote}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-1 text-xs">
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {new Date(req.createdAt).toLocaleDateString()}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await fetch(`/api/feature-requests/${req.id}/vote`, { method: 'POST' });
+                      if (res.ok) onUpdateFeatureRequest((await res.json()) as FeatureRequest);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-300 dark:border-slate-700 hover:border-amber-500 text-slate-700 dark:text-slate-200 rounded-lg font-medium tabular-nums"
+                  >
+                    <ThumbsUp className="w-3.5 h-3.5" />
+                    Upvote Priority ({req.votes})
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <form
+            onSubmit={handleSubmitFeatureRequest}
+            className="lg:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3 h-fit"
+          >
+            <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+              <Lightbulb className="w-4 h-4 text-amber-600" />
+              Request an Unsupported Feature
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Need a sensor protocol, municipal inspection dataset, contractor verification workflow, or off-grid tool
+              that isn&apos;t built yet? Request it here and our AI scopes the build automatically.
+            </p>
+            <select
+              value={frCategory}
+              onChange={(e) => setFrCategory(e.target.value as FeatureRequest['category'])}
+              className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+            >
+              <option value="Diagnostics & AI">Diagnostics &amp; AI</option>
+              <option value="Hazards & Weather">Hazards &amp; Weather</option>
+              <option value="Contractor Verification">Contractor Verification</option>
+              <option value="Store & Rentals">Store &amp; Rentals</option>
+              <option value="Public Database & Offline">Public Database &amp; Offline</option>
+              <option value="Other Unsupported Feature">Other Unsupported Feature</option>
+            </select>
+            <input
+              type="text"
+              required
+              value={frTitle}
+              onChange={(e) => setFrTitle(e.target.value)}
+              placeholder="Feature title (e.g. Radon & VOC Airthings sync)"
+              className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+            />
+            <input
+              type="text"
+              value={frUser}
+              onChange={(e) => setFrUser(e.target.value)}
+              placeholder="Your name or handle (optional)"
+              className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+            />
+            <textarea
+              rows={4}
+              required
+              value={frDesc}
+              onChange={(e) => setFrDesc(e.target.value)}
+              placeholder="Explain what problem it solves and what data or hardware should connect..."
+              className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+            />
+            {frFeedback && <div className="text-xs text-amber-700 dark:text-amber-300">{frFeedback}</div>}
+            <button
+              type="submit"
+              disabled={frSubmitting}
+              className="w-full py-2 px-4 text-xs font-semibold bg-slate-900 dark:bg-amber-600 hover:bg-slate-800 dark:hover:bg-amber-500 text-white rounded-lg"
+            >
+              {frSubmitting ? 'Scoping Feature Request...' : 'Submit Feature Request'}
             </button>
           </form>
         </div>

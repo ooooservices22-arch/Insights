@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Award,
   BadgeCheck,
   Calendar,
   CheckCircle2,
   Fingerprint,
+  Phone,
+  PhoneCall,
   Search,
   ShieldCheck,
   UserPlus,
@@ -33,6 +36,7 @@ interface Props {
   fieldGigs: FieldGig[];
   initialFilter?: string;
   onAddContractor: (c: Contractor) => void;
+  onUpdateContractor: (c: Contractor) => void;
   onAddBooking: (b: Booking) => void;
   onUpdateBooking: (b: Booking) => void;
   onAddGig: (g: FieldGig) => void;
@@ -46,6 +50,7 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
   fieldGigs,
   initialFilter,
   onAddContractor,
+  onUpdateContractor,
   onAddBooking,
   onUpdateBooking,
   onAddGig,
@@ -60,6 +65,15 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
   const [onlyLiveScan, setOnlyLiveScan] = useState<boolean>(false);
   const [onlyIicrc, setOnlyIicrc] = useState<boolean>(false);
   const [onlyRentals, setOnlyRentals] = useState<boolean>(false);
+  const [onlyCallVerified, setOnlyCallVerified] = useState<boolean>(false);
+
+  // Certification Call Verification Modal State
+  const [callTarget, setCallTarget] = useState<Contractor | null>(null);
+  const [callEnteredCode, setCallEnteredCode] = useState<string>('');
+  const [callNotesInput, setCallNotesInput] = useState<string>('');
+  const [callVerifierName, setCallVerifierName] = useState<string>('');
+  const [callStatusMsg, setCallStatusMsg] = useState<string | null>(null);
+  const [callBusy, setCallBusy] = useState<boolean>(false);
 
   // Booking Modal State
   const [bookingTarget, setBookingTarget] = useState<Contractor | null>(null);
@@ -81,6 +95,9 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
   const [applyIicrc, setApplyIicrc] = useState<boolean>(false);
   const [applyRentsEquipment, setApplyRentsEquipment] = useState<boolean>(false);
   const [applyVirtualFee, setApplyVirtualFee] = useState<string>('0');
+  const [applyPhone, setApplyPhone] = useState<string>('');
+  const [applyCertIssuer, setApplyCertIssuer] = useState<string>('');
+  const [applyCertifications, setApplyCertifications] = useState<string>('');
   const [applyBio, setApplyBio] = useState<string>('');
 
   // Field Scout Side-Work Gigs state
@@ -97,6 +114,7 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
     const matchScan = !onlyLiveScan || c.liveScanCleared;
     const matchIicrc = !onlyIicrc || c.iicrcCertified;
     const matchRent = !onlyRentals || c.rentsEquipment;
+    const matchCall = !onlyCallVerified || c.callVerification?.status === 'Verified by Call';
     const q = searchQuery.toLowerCase().trim();
     const matchQuery =
       !q ||
@@ -105,8 +123,9 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
       c.category.toLowerCase().includes(q) ||
       c.city.toLowerCase().includes(q) ||
       c.bio.toLowerCase().includes(q) ||
-      c.licenseNumber.toLowerCase().includes(q);
-    return matchCat && matchScan && matchIicrc && matchRent && matchQuery;
+      c.licenseNumber.toLowerCase().includes(q) ||
+      (c.certifications || []).some((cert) => cert.toLowerCase().includes(q));
+    return matchCat && matchScan && matchIicrc && matchRent && matchCall && matchQuery;
   });
 
   const handleBookSubmit = async (e: React.FormEvent) => {
@@ -143,6 +162,10 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
   const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!applyName.trim() || !applyCompany.trim() || !applyLicenseNum.trim()) return;
+    const certs = applyCertifications
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     const res = await fetch('/api/contractors/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -157,6 +180,9 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
         iicrcCertified: applyIicrc,
         rentsEquipment: applyRentsEquipment,
         virtualConsultFee: Number(applyVirtualFee) || 0,
+        verificationPhone: applyPhone.trim() || undefined,
+        certificationIssuer: applyCertIssuer.trim() || undefined,
+        certifications: certs.length ? certs : undefined,
         bio: applyBio,
       }),
     });
@@ -167,7 +193,43 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
       setApplyName('');
       setApplyCompany('');
       setApplyLicenseNum('');
+      setApplyPhone('');
+      setApplyCertIssuer('');
+      setApplyCertifications('');
       setApplyBio('');
+    }
+  };
+
+  const handleCallVerifyAction = async (action: 'initiate' | 'confirm') => {
+    if (!callTarget) return;
+    setCallBusy(true);
+    setCallStatusMsg(null);
+    try {
+      const res = await fetch(`/api/contractors/${callTarget.id}/verify-call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          enteredCode: callEnteredCode,
+          callNotes: callNotesInput,
+          verifierName: callVerifierName,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCallStatusMsg(data.error || 'Call verification failed.');
+        return;
+      }
+      const updated = data as Contractor;
+      onUpdateContractor(updated);
+      setCallTarget(updated);
+      setCallStatusMsg(
+        action === 'initiate'
+          ? `Verification call logged to ${updated.verificationPhone}. Confirm challenge code ${updated.callVerification?.verificationCode} when answered.`
+          : `Verified by Call confirmed and permanently timestamped for ${updated.company}.`
+      );
+    } finally {
+      setCallBusy(false);
     }
   };
 
@@ -253,6 +315,17 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
             >
               Rents Tools
             </button>
+            <button
+              type="button"
+              onClick={() => setOnlyCallVerified((v) => !v)}
+              className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                onlyCallVerified
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 text-emerald-800 dark:text-emerald-300'
+                  : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              Call-Verified
+            </button>
           </div>
         </div>
 
@@ -326,6 +399,27 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
               onChange={(e) => setApplyVirtualFee(e.target.value)}
               placeholder="Virtual Consult Fee ($0 = Free)"
               className="px-3 py-2 text-xs font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+            />
+            <input
+              type="tel"
+              value={applyPhone}
+              onChange={(e) => setApplyPhone(e.target.value)}
+              placeholder="Direct Verification Phone (+1 ...)"
+              className="px-3 py-2 text-xs font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+            />
+            <input
+              type="text"
+              value={applyCertIssuer}
+              onChange={(e) => setApplyCertIssuer(e.target.value)}
+              placeholder="Certifying Board (CSLB, IICRC, EPA, ICC)"
+              className="px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+            />
+            <input
+              type="text"
+              value={applyCertifications}
+              onChange={(e) => setApplyCertifications(e.target.value)}
+              placeholder="Certifications (comma-separated, e.g. EPA 608, NATE)"
+              className="px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
             />
           </div>
           <textarea
@@ -413,12 +507,44 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
                     <span className="text-sky-700 dark:text-sky-400 font-medium">IICRC Verified</span>
                   </>
                 )}
+                <span aria-hidden="true">·</span>
+                <span
+                  className={`inline-flex items-center gap-1 font-medium ${
+                    c.callVerification?.status === 'Verified by Call'
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-amber-700 dark:text-amber-400'
+                  }`}
+                >
+                  <PhoneCall className="w-3.5 h-3.5" />
+                  {c.callVerification?.status || 'Pending Call'}
+                </span>
               </div>
+
+              {/* Formal Certification Stack */}
+              {c.certifications && c.certifications.length > 0 && (
+                <div className="p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs space-y-1">
+                  <div className="flex items-center justify-between gap-2 text-slate-800 dark:text-slate-200 font-semibold">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Award className="w-3.5 h-3.5 text-amber-600" />
+                      {c.certificationIssuer || 'Accredited Trade Board'}
+                    </span>
+                    {c.certificationExpiry && (
+                      <span className="font-mono text-[11px] text-slate-500 tabular-nums">
+                        Exp {c.certificationExpiry}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-slate-600 dark:text-slate-300">
+                    {c.certifications.join(' · ')}
+                  </div>
+                </div>
+              )}
 
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed pt-1">{c.bio}</p>
 
               <div className="text-xs text-slate-500 dark:text-slate-400">
                 Insurance Zones: {c.insuranceZones.join(', ')}
+                {c.verificationPhone ? ` · Dispatch Line: ${c.verificationPhone}` : ''}
               </div>
 
               {c.rentsEquipment && c.rentalInventory.length > 0 && (
@@ -429,21 +555,37 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
               )}
             </div>
 
-            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-mono text-slate-500 dark:text-slate-400 tabular-nums">
-                On-Site Rate: ${c.hourlyRate}/hr
+                On-Site: ${c.hourlyRate}/hr
               </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setBookingTarget(c);
-                  setServiceMode('Virtual Diagnostic');
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-slate-900 dark:bg-amber-600 hover:bg-slate-800 dark:hover:bg-amber-500 text-white rounded-lg transition-colors whitespace-nowrap shrink-0"
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                Book Consult / Schedule
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCallTarget(c);
+                    setCallEnteredCode(c.callVerification?.verificationCode || '');
+                    setCallNotesInput(c.callVerification?.callNotes || '');
+                    setCallVerifierName(c.callVerification?.verifierName || '');
+                    setCallStatusMsg(null);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                >
+                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                  {c.callVerification?.status === 'Verified by Call' ? 'Call Log / Re-Verify' : 'Verify by Call'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBookingTarget(c);
+                    setServiceMode('Virtual Diagnostic');
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-slate-900 dark:bg-amber-600 hover:bg-slate-800 dark:hover:bg-amber-500 text-white rounded-lg transition-colors whitespace-nowrap shrink-0"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  Book Consult
+                </button>
+              </div>
             </div>
           </div>
         ))}
@@ -809,6 +951,137 @@ export const MarketplaceWorkspace: React.FC<Props> = ({
               Confirm Encrypted Booking
             </button>
           </form>
+        </div>
+      )}
+      {/* Contractor Certification & Live Voice Call Verification Modal */}
+      {callTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <PhoneCall className="w-4 h-4 text-emerald-600" />
+                  Certification &amp; Live Call Verification
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {callTarget.company} · {callTarget.name} · Lic #{callTarget.licenseNumber}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCallTarget(null)}
+                className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Certifying Body</span>
+                <span className="font-semibold text-slate-900 dark:text-white">
+                  {callTarget.certificationIssuer || 'State Licensing Board'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Active Certifications</span>
+                <span className="font-medium text-slate-800 dark:text-slate-200 text-right">
+                  {(callTarget.certifications || [callTarget.licenseClass]).join(', ')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Verification Phone</span>
+                <a
+                  href={`tel:${(callTarget.verificationPhone || '+18005550190').replace(/[^+\d]/g, '')}`}
+                  className="font-mono font-bold text-amber-700 dark:text-amber-400 underline"
+                >
+                  {callTarget.verificationPhone || '+1 (800) 555-0190'}
+                </a>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Call Challenge Code</span>
+                <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                  {callTarget.callVerification?.verificationCode || '482910'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Current Call Status</span>
+                <span className="font-semibold text-slate-900 dark:text-white">
+                  {callTarget.callVerification?.status || 'Pending Call'}
+                  {callTarget.callVerification?.verifiedAt
+                    ? ` · ${new Date(callTarget.callVerification.verifiedAt).toLocaleDateString()}`
+                    : ''}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Confirmed Challenge Code
+                  </label>
+                  <input
+                    type="text"
+                    value={callEnteredCode}
+                    onChange={(e) => setCallEnteredCode(e.target.value)}
+                    placeholder="6-digit code read on call"
+                    className="w-full px-3 py-2 font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Verifier Name
+                  </label>
+                  <input
+                    type="text"
+                    value={callVerifierName}
+                    onChange={(e) => setCallVerifierName(e.target.value)}
+                    placeholder="Your name / Dispatch"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Voice Verification &amp; Credential Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={callNotesInput}
+                  onChange={(e) => setCallNotesInput(e.target.value)}
+                  placeholder="Log who answered, insurance certificate check, and active crew availability..."
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                />
+              </div>
+            </div>
+
+            {callStatusMsg && (
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs text-emerald-800 dark:text-emerald-200">
+                {callStatusMsg}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+              <a
+                href={`tel:${(callTarget.verificationPhone || '+18005550190').replace(/[^+\d]/g, '')}`}
+                onClick={() => handleCallVerifyAction('initiate')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <Phone className="w-3.5 h-3.5 text-amber-600" />
+                Dial &amp; Log Call Attempt
+              </a>
+              <button
+                type="button"
+                disabled={callBusy}
+                onClick={() => handleCallVerifyAction('confirm')}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white rounded-lg"
+              >
+                <PhoneCall className="w-3.5 h-3.5" />
+                {callBusy ? 'Recording Verification...' : 'Confirm Verified by Call'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

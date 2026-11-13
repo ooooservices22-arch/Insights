@@ -1,5 +1,13 @@
-import { GoogleGenAI } from '@google/genai';
-import type { DamageAnalysisResult, GroundingSource, HazardGuidanceResult } from '../src/types.ts';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import type {
+  AgencyCrossCheck,
+  DamageAnalysisResult,
+  GroundingSource,
+  HazardGuidanceResult,
+  IndependentForecastResult,
+  LiveHazardSnapshot,
+  PublicCloudAgencyRecord,
+} from '../src/types.ts';
 
 function getClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -309,4 +317,149 @@ Include 3 targeted suggestedVideos and 4–5 animatedSteps with targetX/targetY 
     ...parsed,
     sources: extractGroundingSources(response),
   };
+}
+
+export async function generateIndependentForecast(params: {
+  locationLabel: string;
+  snapshot: LiveHazardSnapshot;
+}): Promise<IndependentForecastResult> {
+  const ai = getClient();
+  const s = params.snapshot;
+  const prompt = `You are an independent atmospheric physicist, hydrologist, and property-protection forecaster inside "insights".
+CRITICAL RULE: Do NOT repeat vague television or mainstream news weather clichés. Derive your own first-principles meteorological, air-quality, and property-risk forecast strictly from the LIVE RAW SENSOR TELEMETRY below plus raw NOAA/Open-Meteo station physics.
+
+Location: "${params.locationLabel}" (${s.lat.toFixed(4)}, ${s.lon.toFixed(4)})
+Observed Timestamp: ${s.updatedAt}
+
+RAW SENSOR TELEMETRY:
+- Temperature: ${s.weather.temperatureF}°F | Dew Point: ${s.atmosphericRaw.dewPointF}°F | Relative Humidity: ${s.atmosphericRaw.humidityPct}%
+- Sea-Level Barometric Pressure: ${s.atmosphericRaw.pressureHpa} hPa | 3-Hour Barometric Slope: ${s.atmosphericRaw.pressureTrend3hHpa >= 0 ? '+' : ''}${s.atmosphericRaw.pressureTrend3hHpa} hPa
+- CAPE Convective Instability: ${s.atmosphericRaw.capeJkg} J/kg | Cloud Cover: ${s.atmosphericRaw.cloudCoverPct}%
+- Wind: ${s.weather.windMph} mph (Gusts ${s.weather.windGustMph} mph) | Rain Rate: ${s.weather.precipitationMm} mm/hr
+- Upper Soil Moisture (3-9cm): ${(s.weather.soilMoisture * 100).toFixed(0)}% | Basin River Discharge: ${s.weather.riverDischargeM3s ?? 'N/A'} m³/s
+- Air Quality: US AQI ${s.airQuality.usAqi} (${s.airQuality.category}) | PM2.5 ${s.airQuality.pm25} µg/m³ | PM10 ${s.airQuality.pm10} µg/m³ | Ozone ${s.airQuality.ozone} µg/m³ | Mold Risk: ${s.airQuality.moldSporeRisk}
+- 48h Raw Sensor Trajectory (6h intervals): ${JSON.stringify(s.atmosphericRaw.hourly48h)}
+
+Return ONLY valid JSON matching this schema:
+{
+  "locationLabel": "${params.locationLabel}",
+  "generatedAt": "${new Date().toISOString()}",
+  "headline": "Sharp sensor-derived forecast verdict",
+  "methodologyNote": "Explain concisely how this AI forecast calculates barometric slope, dew-point spread, hydrostatic lag, and particulate trapping directly from physical telemetry instead of broadcast news scripts",
+  "barometricAndMoistureAnalysis": "Technical reading of pressure gradient, condensation/mold window, and inversion/AQI dispersion",
+  "predictedPeriods": [
+    {
+      "window": "Next 12 Hours",
+      "condition": "Concise physical weather & air condition",
+      "confidencePct": 88,
+      "tempRangeF": "54–66°F",
+      "precipProbabilityPct": 20,
+      "aqiProjection": "US AQI 35–48 (Good)",
+      "hazardDriver": "Primary physical driver (e.g. barometric trough / radiative cooling inversion)",
+      "actionablePrep": "Exact home, HVAC, sump, or travel action"
+    }
+  ],
+  "blindSpotsMediaMisses": [
+    "Specific hidden hazard broadcast news skips (e.g. 24-72h groundwater hydrostatic lag after rain stops, night dew-point condensation inside crawlspaces, stagnant valley PM2.5 trapping)"
+  ]
+}
+Include exactly 4 predictedPeriods ("Next 12 Hours", "24–48 Hours", "Days 3–4", "Days 5–7") and 3 concrete blindSpotsMediaMisses.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-4-hydrogen',
+    contents: prompt,
+    config: {
+      thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+      tools: [{ googleSearch: {} }],
+    },
+  });
+
+  const parsed = extractJsonBlock<Omit<IndependentForecastResult, 'sources'>>(response.text ?? '');
+  return {
+    ...parsed,
+    locationLabel: params.locationLabel,
+    generatedAt: parsed.generatedAt || new Date().toISOString(),
+    sources: extractGroundingSources(response),
+  };
+}
+
+export async function runMultiAgencyFactCheck(params: {
+  topicCategory: PublicCloudAgencyRecord['topicCategory'];
+  region: string;
+  title: string;
+  claimOrMetric: string;
+}): Promise<{
+  consensusStatus: PublicCloudAgencyRecord['consensusStatus'];
+  agencyChecks: AgencyCrossCheck[];
+}> {
+  const ai = getClient();
+  const prompt = `You are the Public Cloud Multi-Agency Fact-Check Engine for "insights".
+Cross-verify the following public environmental, safety, contractor, or infrastructure claim across distinct government agencies using live Google Search grounding so the public database exposes both corroboration and any inter-agency discrepancies.
+
+Topic Category: ${params.topicCategory}
+Region: ${params.region}
+Title: ${params.title}
+Claim / Metric to Audit: ${params.claimOrMetric}
+
+Evaluate against at least 3 relevant agencies chosen from:
+"NOAA / NWS", "USGS", "US EPA", "FEMA", "CDC", "FDA", "OSHA", "State Licensing Board".
+
+Return ONLY valid JSON:
+{
+  "consensusStatus": "Multi-Agency Verified" | "Discrepancy Under Review",
+  "agencyChecks": [
+    {
+      "agency": "US EPA",
+      "status": "Corroborated" | "Discrepancy Flagged" | "Updated",
+      "finding": "Concise 1-2 sentence factual finding referencing real standards or agency telemetry",
+      "verifiedAt": "${new Date().toISOString()}",
+      "sourceUrl": "https://www.epa.gov/"
+    }
+  ]
+}`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-4-hydrogen',
+    contents: prompt,
+    config: {
+      tools: [{ googleSearch: {} }],
+    },
+  });
+
+  return extractJsonBlock<{
+    consensusStatus: PublicCloudAgencyRecord['consensusStatus'];
+    agencyChecks: AgencyCrossCheck[];
+  }>(response.text ?? '');
+}
+
+export async function triageUnsupportedFeature(params: {
+  title: string;
+  category: string;
+  description: string;
+}): Promise<{ aiScopeNote: string }> {
+  const ai = getClient();
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-4-hydrogen',
+      contents: `A user requested an unsupported feature for the "insights" property, air quality, hazard, and accountability platform.
+Title: ${params.title}
+Category: ${params.category}
+Description: ${params.description}
+
+Write a 2-sentence practical engineering scope note explaining how this can be added to the public roadmap (data source, safety/verification guardrails, and user benefit). Return plain text only.`,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      },
+    });
+    return {
+      aiScopeNote:
+        response.text?.trim() ||
+        'Logged to the public engineering backlog for sensor integration and community verification.',
+    };
+  } catch {
+    return {
+      aiScopeNote:
+        'Logged to the public roadmap queue for API scoping, multi-agency data verification, and offline PWA sync support.',
+    };
+  }
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ExternalLink, MessageSquare, Send, X } from 'lucide-react';
-import type { GroundingSource } from '../types';
+import { CheckCircle2, ExternalLink, Lightbulb, MessageSquare, Send, X } from 'lucide-react';
+import type { FeatureRequest, GroundingSource } from '../types';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -15,6 +15,7 @@ interface Props {
   locationLabel: string;
   prefillQuestion?: string | null;
   onClearPrefill?: () => void;
+  onFeatureRequested?: (req: FeatureRequest) => void;
 }
 
 const QUICK_PROMPTS = [
@@ -31,15 +32,77 @@ export const AiGuideDrawer: React.FC<Props> = ({
   locationLabel,
   prefillQuestion,
   onClearPrefill,
+  onFeatureRequested,
 }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      text: 'Ask anything about organic growth prevention, smart vacation alerts, equipment rebuilds, water filtration, contractor quotes, insurance terminology, or navigating insights.',
+      text: 'Ask anything about organic growth prevention, smart vacation alerts, equipment rebuilds, water filtration, contractor quotes, insurance terminology, or navigating insights. If you ask for something not supported yet, use "Request Unsupported Feature" below to queue it right away.',
     },
   ]);
   const [input, setInput] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
+
+  // Inline unsupported feature request workflow
+  const [requestFormOpen, setRequestFormOpen] = useState<boolean>(false);
+  const [reqTitle, setReqTitle] = useState<string>('');
+  const [reqDesc, setReqDesc] = useState<string>('');
+  const [reqCategory, setReqCategory] = useState<FeatureRequest['category']>('Diagnostics & AI');
+  const [reqUser, setReqUser] = useState<string>('');
+  const [reqSubmitting, setReqSubmitting] = useState<boolean>(false);
+  const [reqResult, setReqResult] = useState<string | null>(null);
+
+  const openFeatureRequestFromChat = (seedText?: string) => {
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.text || '';
+    const base = seedText || lastUserMsg || input;
+    if (base && !reqTitle) {
+      setReqTitle(base.slice(0, 80));
+      setReqDesc(base);
+    }
+    setReqResult(null);
+    setRequestFormOpen((prev) => !prev);
+  };
+
+  const handleSubmitFeatureRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reqTitle.trim() || !reqDesc.trim()) return;
+    setReqSubmitting(true);
+    setReqResult(null);
+    try {
+      const res = await fetch('/api/feature-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: reqTitle.trim(),
+          description: reqDesc.trim(),
+          category: reqCategory,
+          requestedBy: reqUser.trim() || 'Community Member',
+          locationContext: `Asked in ${contextSection} (${locationLabel})`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not queue feature request.');
+      const created = data as FeatureRequest;
+      onFeatureRequested?.(created);
+      setReqTitle('');
+      setReqDesc('');
+      setReqResult(`Logged "${created.title}" (${created.status}). ${created.aiScopeNote || ''}`);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: `Feature Request Logged (${created.status}): "${created.title}"\n${
+            created.aiScopeNote ? `Engineering Scope: ${created.aiScopeNote}\n` : ''
+          }You can upvote and track it in Community Glass Wall -> Feature Requests.`,
+        },
+      ]);
+      setRequestFormOpen(false);
+    } catch (err) {
+      setReqResult(err instanceof Error ? err.message : 'Unable to submit feature request.');
+    } finally {
+      setReqSubmitting(false);
+    }
+  };
 
   const sendQuestion = async (q: string) => {
     if (!q.trim() || loading) return;
@@ -86,7 +149,7 @@ export const AiGuideDrawer: React.FC<Props> = ({
           <div className="flex items-center gap-2">
             <MessageSquare className="w-4 h-4 text-amber-600" />
             <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">insights AI Guide & How-To Assistant</h2>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">insights AI Guide &amp; How-To Assistant</h2>
               <div className="text-[11px] text-slate-500 dark:text-slate-400">
                 Grounded advice · {locationLabel}
               </div>
@@ -142,9 +205,108 @@ export const AiGuideDrawer: React.FC<Props> = ({
                   ))}
                 </div>
               )}
+              {m.role === 'assistant' && idx > 0 && (
+                <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Missing a tool or live data feed?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openFeatureRequestFromChat(messages[idx - 1]?.role === 'user' ? messages[idx - 1].text : undefined)}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400 hover:underline whitespace-nowrap shrink-0"
+                  >
+                    <Lightbulb className="w-3 h-3" />
+                    Request Feature
+                  </button>
+                </div>
+              )}
             </div>
           ))}
           {loading && <div className="text-xs text-slate-500">Verifying codes and drafting guidance...</div>}
+
+          {reqResult && (
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 rounded-lg text-xs text-emerald-800 dark:text-emerald-200 flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{reqResult}</span>
+            </div>
+          )}
+
+          {requestFormOpen && (
+            <form
+              onSubmit={handleSubmitFeatureRequest}
+              className="p-3.5 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-900 rounded-lg space-y-2.5"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Lightbulb className="w-3.5 h-3.5 text-amber-600" />
+                  Request Unsupported Feature
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRequestFormOpen(false)}
+                  className="text-[11px] text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+              <input
+                type="text"
+                required
+                value={reqTitle}
+                onChange={(e) => setReqTitle(e.target.value)}
+                placeholder="Feature name (e.g. Live radon sensor bridge)"
+                className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white"
+              />
+              <textarea
+                rows={2}
+                required
+                value={reqDesc}
+                onChange={(e) => setReqDesc(e.target.value)}
+                placeholder="Describe what you asked for that isn't supported yet..."
+                className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={reqCategory}
+                  onChange={(e) => setReqCategory(e.target.value as FeatureRequest['category'])}
+                  className="px-2.5 py-1.5 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white"
+                >
+                  <option value="Diagnostics & AI">Diagnostics &amp; AI</option>
+                  <option value="Hazards & Weather">Hazards &amp; Weather</option>
+                  <option value="Contractor Verification">Contractor Verification</option>
+                  <option value="Store & Rentals">Store &amp; Rentals</option>
+                  <option value="Public Database & Offline">Public Database &amp; Offline</option>
+                  <option value="Other Unsupported Feature">Other Unsupported Feature</option>
+                </select>
+                <input
+                  type="text"
+                  value={reqUser}
+                  onChange={(e) => setReqUser(e.target.value)}
+                  placeholder="Your name / alias"
+                  className="px-2.5 py-1.5 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-white"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={reqSubmitting}
+                className="w-full py-1.5 px-3 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white rounded"
+              >
+                {reqSubmitting ? 'Scoping & Queueing...' : 'Submit Unsupported Feature Request'}
+              </button>
+            </form>
+          )}
+        </div>
+
+        <div className="px-4 pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => openFeatureRequestFromChat()}
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400 hover:underline"
+          >
+            <Lightbulb className="w-3.5 h-3.5" />
+            {requestFormOpen ? 'Hide Feature Request Form' : 'Request an unsupported feature when asked'}
+          </button>
+          <span className="text-[11px] text-slate-400">Open roadmap</span>
         </div>
 
         <form
@@ -152,7 +314,7 @@ export const AiGuideDrawer: React.FC<Props> = ({
             e.preventDefault();
             sendQuestion(input);
           }}
-          className="p-4 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2"
+          className="p-4 pt-2 flex items-center gap-2"
         >
           <input
             type="text"

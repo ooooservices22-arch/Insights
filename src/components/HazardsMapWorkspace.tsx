@@ -12,12 +12,14 @@ import {
   Navigation,
   Play,
   RefreshCw,
+  Sparkles,
   Square,
   Video,
   Waves,
   Wind,
   X,
 } from 'lucide-react';
+import { NATURAL_CYCLES, type NaturalCycleEntry } from '../data/naturalCycles';
 import type {
   AlmanacReport,
   Contractor,
@@ -25,6 +27,7 @@ import type {
   GroundingSource,
   HazardAlert,
   HazardGuidanceResult,
+  IndependentForecastResult,
   LiveHazardSnapshot,
   PowerOutageReport,
 } from '../types';
@@ -106,6 +109,15 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
   const [loadingGuidance, setLoadingGuidance] = useState<boolean>(false);
   const [guidanceError, setGuidanceError] = useState<string | null>(null);
   const [diagStepIdx, setDiagStepIdx] = useState<number>(0);
+
+  // Independent AI Forecast State (Raw Sensors vs News Media)
+  const [aiForecast, setAiForecast] = useState<IndependentForecastResult | null>(null);
+  const [loadingForecast, setLoadingForecast] = useState<boolean>(false);
+  const [forecastError, setForecastError] = useState<string | null>(null);
+
+  // Mother Nature Cycles Explorer State
+  const [cycleCategoryFilter, setCycleCategoryFilter] = useState<string>('All');
+  const [activeCycleId, setActiveCycleId] = useState<string>(NATURAL_CYCLES[0].id);
 
   // Live Camera & Video Audit Mode State
   const [auditOpen, setAuditOpen] = useState<boolean>(false);
@@ -301,6 +313,30 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
     }
   };
 
+  const handleGenerateIndependentForecast = async () => {
+    setLoadingForecast(true);
+    setForecastError(null);
+    try {
+      const res = await fetch('/api/ai/independent-forecast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lat: coords.lat,
+          lon: coords.lon,
+          locationLabel: coords.label,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to compute raw-sensor AI forecast.');
+      if (data.snapshot) setSnapshot(data.snapshot as LiveHazardSnapshot);
+      setAiForecast(data.forecast as IndependentForecastResult);
+    } catch (err) {
+      setForecastError(err instanceof Error ? err.message : 'Unable to run independent AI forecast.');
+    } finally {
+      setLoadingForecast(false);
+    }
+  };
+
   const handleSubmitAlmanac = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reporterName.trim() || !elevationNotes.trim()) return;
@@ -474,6 +510,66 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
             <div className="text-xs text-slate-500 dark:text-slate-400">Basin River Discharge</div>
             <div className="text-sm font-mono font-semibold text-slate-900 dark:text-white tabular-nums mt-0.5">
               {snapshot?.weather.riverDischargeM3s != null ? `${snapshot.weather.riverDischargeM3s} m³/s` : 'Normal'}
+            </div>
+          </div>
+        </div>
+
+        {/* GPS Live Air Quality & Mold Spore Telemetry Band */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+          <div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">GPS Air Quality (US AQI)</div>
+            <div
+              className={`text-sm font-mono font-bold tabular-nums mt-0.5 ${
+                (snapshot?.airQuality?.usAqi ?? 0) >= 151
+                  ? 'text-red-700 dark:text-red-400'
+                  : (snapshot?.airQuality?.usAqi ?? 0) >= 101
+                    ? 'text-amber-700 dark:text-amber-400'
+                    : 'text-emerald-700 dark:text-emerald-400'
+              }`}
+            >
+              {snapshot?.airQuality ? `${snapshot.airQuality.usAqi} · ${snapshot.airQuality.category}` : '—'}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">PM2.5 / PM10</div>
+            <div className="text-sm font-mono font-semibold text-slate-900 dark:text-white tabular-nums mt-0.5">
+              {snapshot?.airQuality ? `${snapshot.airQuality.pm25} / ${snapshot.airQuality.pm10} µg/m³` : '—'}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">Ozone (O₃) / Dust</div>
+            <div className="text-sm font-mono font-semibold text-slate-900 dark:text-white tabular-nums mt-0.5">
+              {snapshot?.airQuality ? `${snapshot.airQuality.ozone} / ${snapshot.airQuality.dust} µg/m³` : '—'}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">Outdoor Mold Spore Risk</div>
+            <div
+              className={`text-sm font-semibold mt-0.5 ${
+                snapshot?.airQuality?.moldSporeRisk === 'High'
+                  ? 'text-red-700 dark:text-red-400'
+                  : snapshot?.airQuality?.moldSporeRisk === 'Moderate'
+                    ? 'text-amber-700 dark:text-amber-400'
+                    : 'text-emerald-700 dark:text-emerald-400'
+              }`}
+            >
+              {snapshot?.airQuality
+                ? `${snapshot.airQuality.moldSporeRisk} (${snapshot.atmosphericRaw.humidityPct}% RH)`
+                : '—'}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">Barometer / 3h Slope</div>
+            <div className="text-sm font-mono font-semibold text-slate-900 dark:text-white tabular-nums mt-0.5">
+              {snapshot?.atmosphericRaw
+                ? `${snapshot.atmosphericRaw.pressureHpa} hPa (${snapshot.atmosphericRaw.pressureTrend3hHpa >= 0 ? '+' : ''}${snapshot.atmosphericRaw.pressureTrend3hHpa})`
+                : '—'}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">Pollen &amp; Filtration Note</div>
+            <div className="text-xs font-medium text-slate-800 dark:text-slate-200 mt-0.5 truncate" title={snapshot?.airQuality?.pollenSummary}>
+              {snapshot?.airQuality?.pollenSummary || '—'}
             </div>
           </div>
         </div>
@@ -1116,6 +1212,263 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
           </div>
         </section>
       )}
+
+      {/* INDEPENDENT AI SENSOR FORECAST (ZERO BROADCAST MEDIA SPIN) */}
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              First-Principles Atmospheric Physics · Barometric Slope, Dew Point &amp; AQI Dispersion · No TV News Spin
+            </div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-600" />
+              Independent AI Predicted Forecast for {coords.label}
+            </h2>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+              Computes its own multi-day weather, mold-humidity window, and air-quality forecast strictly from raw station telemetry instead of relying on broadcast news anchors.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleGenerateIndependentForecast}
+            disabled={loadingForecast}
+            className="px-4 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-500 disabled:opacity-60 text-white rounded-lg transition-colors whitespace-nowrap shrink-0"
+          >
+            {loadingForecast ? 'Computing Raw Sensor Forecast...' : 'Run Independent AI Forecast'}
+          </button>
+        </div>
+
+        {/* Raw Sensor Metrics Bar */}
+        {snapshot?.atmosphericRaw && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs">
+            <div>
+              <div className="text-slate-500 dark:text-slate-400">Temp / Dew Point Spread</div>
+              <div className="font-mono font-semibold text-slate-900 dark:text-white tabular-nums mt-0.5">
+                {snapshot.weather.temperatureF}°F / {snapshot.atmosphericRaw.dewPointF}°F
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500 dark:text-slate-400">Convective Energy (CAPE)</div>
+              <div className="font-mono font-semibold text-slate-900 dark:text-white tabular-nums mt-0.5">
+                {snapshot.atmosphericRaw.capeJkg} J/kg
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500 dark:text-slate-400">Cloud Cover / UV Index</div>
+              <div className="font-mono font-semibold text-slate-900 dark:text-white tabular-nums mt-0.5">
+                {snapshot.atmosphericRaw.cloudCoverPct}% · UV {snapshot.airQuality.uvIndex}
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500 dark:text-slate-400">NO₂ / CO Trace Load</div>
+              <div className="font-mono font-semibold text-slate-900 dark:text-white tabular-nums mt-0.5">
+                {snapshot.airQuality.no2} / {snapshot.airQuality.co} µg/m³
+              </div>
+            </div>
+          </div>
+        )}
+
+        {forecastError && (
+          <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg text-xs text-red-800 dark:text-red-200">
+            {forecastError}
+          </div>
+        )}
+
+        {aiForecast && (
+          <div className="space-y-4 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <div>
+              <div className="text-base font-bold text-slate-900 dark:text-white">{aiForecast.headline}</div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                {aiForecast.methodologyNote}
+              </p>
+              <p className="text-xs text-slate-700 dark:text-slate-200 mt-2 p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
+                <strong>Barometric &amp; Moisture Physics:</strong> {aiForecast.barometricAndMoistureAnalysis}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {aiForecast.predictedPeriods.map((p, idx) => (
+                <div
+                  key={idx}
+                  className="p-4 border border-slate-200 dark:border-slate-800 rounded-lg bg-slate-50 dark:bg-slate-950 space-y-2 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-slate-900 dark:text-white">{p.window}</span>
+                    <span className="font-mono text-amber-700 dark:text-amber-400 tabular-nums">
+                      {p.confidencePct}% conf
+                    </span>
+                  </div>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200">{p.condition}</div>
+                  <div className="font-mono text-[11px] text-slate-600 dark:text-slate-400 tabular-nums">
+                    {p.tempRangeF} · {p.precipProbabilityPct}% precip · {p.aqiProjection}
+                  </div>
+                  <div className="text-[11px] text-slate-600 dark:text-slate-300">
+                    <strong>Driver:</strong> {p.hazardDriver}
+                  </div>
+                  <div className="pt-1 border-t border-slate-200 dark:border-slate-800 text-[11px] text-emerald-700 dark:text-emerald-400">
+                    {p.actionablePrep}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {aiForecast.blindSpotsMediaMisses?.length > 0 && (
+              <div className="p-4 border border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/20 rounded-lg space-y-1.5 text-xs">
+                <div className="font-bold text-slate-900 dark:text-white">
+                  What TV / News Weather Misses at This Location
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-slate-700 dark:text-slate-200">
+                  {aiForecast.blindSpotsMediaMisses.map((b, i) => (
+                    <li key={i}>{b}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* CYCLES MOTHER NATURE GOES THROUGH & PEOPLE FORGET */}
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              Longitudinal Earth Rhythms · Active Phase Tracker ({new Date().toLocaleDateString([], { month: 'long', year: 'numeric' })})
+            </div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+              Cycles Mother Nature Repeats That People Forget
+            </h2>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+              Multi-year weather, tidal, solar, burn-scar, and soil cycles that catch homeowners off guard between quiet decades.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-950 rounded-lg">
+            {['All', 'Ocean & Atmospheric', 'Hydrology & Wildfire', 'Astronomy & Tides', 'Biological & Air', 'Soil & Structural'].map(
+              (cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCycleCategoryFilter(cat)}
+                  className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                    cycleCategoryFilter === cat
+                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  {cat}
+                </button>
+              )
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <div className="lg:col-span-5 divide-y divide-slate-200 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
+            {NATURAL_CYCLES.filter(
+              (c) => cycleCategoryFilter === 'All' || c.category === cycleCategoryFilter
+            ).map((cycle) => {
+              const now = new Date();
+              const phase = cycle.activePhaseNote(now.getMonth(), now.getFullYear(), coords.lat);
+              const isSelected = activeCycleId === cycle.id;
+              return (
+                <button
+                  key={cycle.id}
+                  type="button"
+                  onClick={() => setActiveCycleId(cycle.id)}
+                  className={`w-full text-left p-3.5 transition-colors space-y-1 ${
+                    isSelected
+                      ? 'bg-slate-900 dark:bg-slate-800 text-white'
+                      : 'bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className={isSelected ? 'text-amber-300 font-mono' : 'text-slate-500 dark:text-slate-400 font-mono'}>
+                      {cycle.cadence}
+                    </span>
+                    <span
+                      className={`font-semibold ${
+                        phase.urgency === 'Elevated'
+                          ? isSelected
+                            ? 'text-amber-300'
+                            : 'text-red-700 dark:text-red-400'
+                          : isSelected
+                            ? 'text-slate-300'
+                            : 'text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {phase.urgency} Now
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold">{cycle.name}</div>
+                  <div className={`text-[11px] ${isSelected ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                    {phase.phaseLabel}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {(() => {
+            const selectedCycle: NaturalCycleEntry =
+              NATURAL_CYCLES.find((c) => c.id === activeCycleId) || NATURAL_CYCLES[0];
+            const now = new Date();
+            const phase = selectedCycle.activePhaseNote(now.getMonth(), now.getFullYear(), coords.lat);
+            return (
+              <div className="lg:col-span-7 p-5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-4 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-mono text-amber-700 dark:text-amber-400 font-semibold">
+                    {selectedCycle.category} · {selectedCycle.cadence}
+                  </span>
+                  <span className="font-semibold text-slate-900 dark:text-white">{phase.phaseLabel}</span>
+                </div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">{selectedCycle.name}</h3>
+                <div>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200 mb-1">Why People Forget This Cycle</div>
+                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed">{selectedCycle.whyPeopleForget}</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-200 dark:border-slate-800">
+                  <div>
+                    <div className="font-semibold text-slate-900 dark:text-white mb-1.5">Early Warning Signals</div>
+                    <ul className="list-disc list-inside space-y-1 text-slate-600 dark:text-slate-300">
+                      {selectedCycle.earlySignals.map((sig, i) => (
+                        <li key={i}>{sig}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="font-semibold text-slate-900 dark:text-white mb-1.5">Protect Property Before Impact</div>
+                    <ul className="list-disc list-inside space-y-1 text-slate-600 dark:text-slate-300">
+                      {selectedCycle.propertyProtectionSteps.map((step, i) => (
+                        <li key={i}>{step}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => launchDiagnosticOverlay(selectedCycle.hazardOverlayKey, selectedCycle.name)}
+                    className="px-3 py-1.5 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white rounded-lg"
+                  >
+                    Open Repair Overlay for This Cycle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onAskGuide(
+                        `How does the "${selectedCycle.name}" cycle impact homes near ${coords.label}, and what step-by-step preparations should I do now?`
+                      )
+                    }
+                    className="px-3 py-1.5 text-xs font-semibold border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-900"
+                  >
+                    Ask AI Guide About This Cycle
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </section>
 
       {/* Gemini Grounded Municipal Water Table, Pumping Stations & Fault History */}
       <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-5">

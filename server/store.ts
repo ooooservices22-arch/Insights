@@ -10,12 +10,14 @@ import type {
   ContractorReview,
   EmergencyMessage,
   FamilyCrowdfundCampaign,
+  FeatureRequest,
   FieldAuditRecord,
   FieldGig,
   FormerEmployeeInsight,
   ForumPost,
   GrocerySanitationReport,
   PowerOutageReport,
+  PublicCloudAgencyRecord,
   StoreItem,
   StoreOrder,
   UsedEquipmentListing,
@@ -36,6 +38,8 @@ export interface InsightsDatabase {
   betaEnrollments: BetaScoutProgramEnrollment[];
   formerEmployeeInsights: FormerEmployeeInsight[];
   crowdfundCampaigns: FamilyCrowdfundCampaign[];
+  publicCloudLedger: PublicCloudAgencyRecord[];
+  featureRequests: FeatureRequest[];
   storeItems: StoreItem[];
   storeOrders: StoreOrder[];
   bookings: Booking[];
@@ -69,6 +73,17 @@ const SEED_DATA: InsightsDatabase = {
       rentalInventory: [],
       bio: 'Foundation settlement diagnostics, seismic retrofit sign-offs, and hydrostatic slab intrusion engineering.',
       meritRankScore: 98,
+      certifications: ['CA BPELSG Structural PE', 'ATC-20 Post-Earthquake Evaluator', 'FEMA Floodplain PE'],
+      certificationIssuer: 'CA Board for Professional Engineers (BPELSG)',
+      certificationExpiry: '2028-06-30',
+      verificationPhone: '+1 (415) 555-0142',
+      callVerification: {
+        status: 'Verified by Call',
+        verifiedAt: '2026-11-10T16:20:00Z',
+        verificationCode: '482910',
+        callNotes: 'Direct license-holder voice verification confirmed active PE seal and $2M E&O coverage.',
+        verifierName: 'insights Dispatch Desk',
+      },
     },
     {
       id: 'ctr-02',
@@ -92,6 +107,17 @@ const SEED_DATA: InsightsDatabase = {
       rentalInventory: ['Commercial HEPA 800 Air Scrubber', 'LGR 150 Dehumidifier', 'FLIR Thermal Leak Camera'],
       bio: 'IICRC certified water damage, Category 3 containment, and DIY equipment rental partner for verified homeowners.',
       meritRankScore: 96,
+      certifications: ['IICRC AMRT Applied Microbial', 'IICRC WRT Water Restoration', 'EPA Lead-Safe RRP #NAT-F1084'],
+      certificationIssuer: 'IICRC Global Registry & CSLB',
+      certificationExpiry: '2027-09-30',
+      verificationPhone: '+1 (510) 555-0193',
+      callVerification: {
+        status: 'Verified by Call',
+        verifiedAt: '2026-11-11T14:05:00Z',
+        verificationCode: '739204',
+        callNotes: 'Confirmed direct mobile & shop line, rental warehouse stock, and active AMRT credential.',
+        verifierName: 'insights Dispatch Desk',
+      },
     },
     {
       id: 'ctr-03',
@@ -115,6 +141,15 @@ const SEED_DATA: InsightsDatabase = {
       rentalInventory: ['Submersible Dewatering Sump Kit', 'Soil Percolation Auger'],
       bio: 'French drains, municipal sump tie-ins, retaining walls, and high water-table dewatering systems.',
       meritRankScore: 95,
+      certifications: ['CSLB Class A General Engineering', 'OSHA 40-Hr HAZWOPER', 'CESSWI Erosion & Sediment'],
+      certificationIssuer: 'CSLB & OSHA Training Institute',
+      certificationExpiry: '2027-12-31',
+      verificationPhone: '+1 (408) 555-0167',
+      callVerification: {
+        status: 'Pending Call',
+        verificationCode: '519083',
+        callNotes: 'Awaiting live callback challenge confirmation with principal.',
+      },
     },
     {
       id: 'ctr-04',
@@ -138,6 +173,17 @@ const SEED_DATA: InsightsDatabase = {
       rentalInventory: ['Spore Trap Air Cassette Kit'],
       bio: 'Independent mold clearance testing, tenant habitability reports, and pre-purchase indoor air quality audits.',
       meritRankScore: 99,
+      certifications: ['ABIH Certified Industrial Hygienist (CIH)', 'ACAC CMC Council-Certified Microbial Consultant', 'CDPH Lead Inspector'],
+      certificationIssuer: 'Board for Global EHS Credentialing (BGC)',
+      certificationExpiry: '2028-04-30',
+      verificationPhone: '+1 (510) 555-0118',
+      callVerification: {
+        status: 'Verified by Call',
+        verifiedAt: '2026-11-12T09:30:00Z',
+        verificationCode: '604128',
+        callNotes: 'Call answered directly at lab desk; AIHA-accredited laboratory chain verified.',
+        verifierName: 'insights Dispatch Desk',
+      },
     },
     {
       id: 'ctr-05',
@@ -161,6 +207,17 @@ const SEED_DATA: InsightsDatabase = {
       rentalInventory: [],
       bio: 'Bad-faith insurance claim appeals, contractor lien disputes, and tenant mold habitability representation.',
       meritRankScore: 94,
+      certifications: ['State Bar of CA Active License', 'NITA Construction & Habitability Litigation'],
+      certificationIssuer: 'State Bar of California',
+      certificationExpiry: '2027-02-01',
+      verificationPhone: '+1 (916) 555-0155',
+      callVerification: {
+        status: 'Verified by Call',
+        verifiedAt: '2026-11-09T18:10:00Z',
+        verificationCode: '318744',
+        callNotes: 'Firm intake desk confirmed Bar #279410 good standing.',
+        verifierName: 'insights Dispatch Desk',
+      },
     },
     {
       id: 'ctr-06',
@@ -184,6 +241,15 @@ const SEED_DATA: InsightsDatabase = {
       rentalInventory: ['2500W Quiet Inverter Generator', 'Transfer Switch Load Tester'],
       bio: 'Transfer switches, tri-fuel standby generator sizing, and off-grid solar-battery emergency backup setups.',
       meritRankScore: 92,
+      certifications: ['CSLB C-10 Electrical', 'EGSA Apprentice/Journeyman Generator Tech', 'NABCEP PV Associate'],
+      certificationIssuer: 'CSLB & Electrical Generating Systems Assoc.',
+      certificationExpiry: '2027-11-30',
+      verificationPhone: '+1 (707) 555-0181',
+      callVerification: {
+        status: 'Pending Call',
+        verificationCode: '892416',
+        callNotes: 'Scheduled outbound verification call to confirm field dispatch line.',
+      },
     },
     {
       id: 'ctr-07',
@@ -207,6 +273,17 @@ const SEED_DATA: InsightsDatabase = {
       rentalInventory: ['Sealed ERV Positive-Pressure Air Unit', 'MERV-16 + HEPA Whole-Home Scrubber'],
       bio: 'Sealed-envelope fresh-air ERV retrofits, HEPA bypass filtration, coil mold remediation, and airtight duct balancing.',
       meritRankScore: 97,
+      certifications: ['NADCA ASCS Air Systems Cleaning', 'EPA Section 608 Universal', 'NATE Sealed-Envelope HVAC'],
+      certificationIssuer: 'NADCA & EPA Clean Air Section 608',
+      certificationExpiry: '2028-01-15',
+      verificationPhone: '+1 (650) 555-0129',
+      callVerification: {
+        status: 'Verified by Call',
+        verifiedAt: '2026-11-12T11:45:00Z',
+        verificationCode: '245619',
+        callNotes: 'Voice verification matched dispatcher & license #CA-C20-619440.',
+        verifierName: 'insights Dispatch Desk',
+      },
     },
     {
       id: 'ctr-08',
@@ -230,6 +307,17 @@ const SEED_DATA: InsightsDatabase = {
       rentalInventory: ['Portable Sealed-Room HEPA Negative/Positive Air Cart'],
       bio: 'HVAC evaporator coil inspection, condensate pan antimicrobial sealing, and continuous fresh-air ERV maintenance.',
       meritRankScore: 93,
+      certifications: ['EPA 608 Universal', 'BPI Building Analyst Envelope', 'ASHRAE Air Quality Tech'],
+      certificationIssuer: 'Building Performance Institute & EPA',
+      certificationExpiry: '2027-08-20',
+      verificationPhone: '+1 (925) 555-0174',
+      callVerification: {
+        status: 'Verified by Call',
+        verifiedAt: '2026-11-11T15:12:00Z',
+        verificationCode: '913055',
+        callNotes: 'Verified shop contact line & active EPA 608 card.',
+        verifierName: 'insights Dispatch Desk',
+      },
     },
     {
       id: 'ctr-09',
@@ -253,6 +341,17 @@ const SEED_DATA: InsightsDatabase = {
       rentalInventory: [],
       bio: 'Live start-to-finish virtual milestone supervision while contractors are on site; catches plumbing, waterproofing, and water-filtration install mistakes before walls close.',
       meritRankScore: 98,
+      certifications: ['ICC Certified Building Official (CBO)', 'IAPMO Plumbing Inspector', 'WQA Certified Water Specialist'],
+      certificationIssuer: 'International Code Council (ICC)',
+      certificationExpiry: '2028-10-01',
+      verificationPhone: '+1 (415) 555-0199',
+      callVerification: {
+        status: 'Verified by Call',
+        verifiedAt: '2026-11-12T17:40:00Z',
+        verificationCode: '117842',
+        callNotes: 'Live video-voice call verified ICC CBO credential #44109.',
+        verifierName: 'insights Dispatch Desk',
+      },
     },
   ],
   reviews: [
@@ -1313,6 +1412,151 @@ const SEED_DATA: InsightsDatabase = {
       createdAt: '2026-11-13T04:45:00Z',
     },
   ],
+  publicCloudLedger: [
+    {
+      id: 'pub-01',
+      cloudKitRecordType: 'PublicHazardFactCheck',
+      topicCategory: 'Air Quality & Emissions',
+      region: 'Northern California / Bay Area',
+      title: 'Indoor PM2.5 & Post-Outage Cold-Chain Mold Thresholds',
+      claimOrMetric:
+        'Cross-check EPA AirNow PM2.5 safe indoor filtration limits (<12 µg/m³ annual / 35 µg/m³ 24h) alongside CDC/NIOSH mold spore indoor containment protocols.',
+      consensusStatus: 'Multi-Agency Verified',
+      lastCrossCheckedAt: '2026-11-13T06:00:00Z',
+      upvotes: 64,
+      agencyChecks: [
+        {
+          agency: 'US EPA',
+          status: 'Corroborated',
+          finding: 'Revised 2024–2026 primary annual PM2.5 NAAQS tightened from 12.0 to 9.0 µg/m³; recommends MERV-13+ or HEPA capture during smoke/dust spikes.',
+          verifiedAt: '2026-11-13T06:00:00Z',
+          sourceUrl: 'https://www.epa.gov/pm-pollution',
+        },
+        {
+          agency: 'CDC',
+          status: 'Corroborated',
+          finding: 'NIOSH confirms bleach does not eliminate porous mold mycelium and aerosolizes spores without negative-pressure HEPA containment.',
+          verifiedAt: '2026-11-13T06:00:00Z',
+          sourceUrl: 'https://www.cdc.gov/mold-health/',
+        },
+        {
+          agency: 'NOAA / NWS',
+          status: 'Updated',
+          finding: 'Nocturnal boundary-layer inversions trap ground-level woodsmoke and valley particulates 6–12 hours longer than afternoon surface wind averages suggest.',
+          verifiedAt: '2026-11-13T06:00:00Z',
+          sourceUrl: 'https://www.weather.gov/',
+        },
+      ],
+    },
+    {
+      id: 'pub-02',
+      cloudKitRecordType: 'PublicHazardFactCheck',
+      topicCategory: 'Food Cold-Chain & Hygiene',
+      region: 'California / East Bay Feeder Corridors',
+      title: 'Grocery Refrigeration Outage 4-Hour Spoilage Rule vs. Municipal Power Logs',
+      claimOrMetric:
+        'Cross-verify utility blackout logs exceeding 4 hours with FDA Food Code TCS temperature thresholds (>41°F spoilage bacteria & mycotoxin growth).',
+      consensusStatus: 'Multi-Agency Verified',
+      lastCrossCheckedAt: '2026-11-13T05:30:00Z',
+      upvotes: 49,
+      agencyChecks: [
+        {
+          agency: 'FDA',
+          status: 'Corroborated',
+          finding: 'FDA Food Code mandates discarding refrigerated dairy, meat, cut produce, and deli items held above 41°F for more than 4 cumulative hours.',
+          verifiedAt: '2026-11-13T05:30:00Z',
+          sourceUrl: 'https://www.fda.gov/food/buy-store-serve-safe-food/food-safety-during-power-outage',
+        },
+        {
+          agency: 'CDC',
+          status: 'Corroborated',
+          finding: 'Warns visual inspection or smell tests cannot detect Listeria or heat-stable toxins in food warmed during grid outages.',
+          verifiedAt: '2026-11-13T05:30:00Z',
+          sourceUrl: 'https://www.cdc.gov/food-safety/',
+        },
+        {
+          agency: 'OSHA',
+          status: 'Corroborated',
+          finding: 'Requires retail cold-storage backup logs and mold-free evaporator condensate drainage for food worker respiratory safety.',
+          verifiedAt: '2026-11-13T05:30:00Z',
+          sourceUrl: 'https://www.osha.gov/',
+        },
+      ],
+    },
+    {
+      id: 'pub-03',
+      cloudKitRecordType: 'PublicHazardFactCheck',
+      topicCategory: 'Flood & Seismic Zone',
+      region: 'Gulf Coast & Coastal California',
+      title: 'FEMA 100-Year Floodplain Maps vs. USGS Subsidence & NOAA Tide Gauges',
+      claimOrMetric:
+        'Audit whether municipal FEMA FIRMs underestimate street flooding during Perigean King Tides and groundwater drawdown.',
+      consensusStatus: 'Discrepancy Under Review',
+      lastCrossCheckedAt: '2026-11-13T05:10:00Z',
+      upvotes: 83,
+      agencyChecks: [
+        {
+          agency: 'FEMA',
+          status: 'Discrepancy Flagged',
+          finding: 'Legacy Zone X designations in several coastal basins rely on pre-2016 rainfall curves that omit compound high-tide storm surge.',
+          verifiedAt: '2026-11-13T05:10:00Z',
+          sourceUrl: 'https://msc.fema.gov/',
+        },
+        {
+          agency: 'USGS',
+          status: 'Updated',
+          finding: 'InSAR satellite interferometry documents 4–18 mm/yr localized coastal alluvium subsidence increasing backflow flood depth.',
+          verifiedAt: '2026-11-13T05:10:00Z',
+          sourceUrl: 'https://www.usgs.gov/',
+        },
+        {
+          agency: 'NOAA / NWS',
+          status: 'Corroborated',
+          finding: 'NOAA Tide Predictions confirm Sunny-Day King Tide flooding triggers storm-drain backups independent of local rainfall.',
+          verifiedAt: '2026-11-13T05:10:00Z',
+          sourceUrl: 'https://tidesandcurrents.noaa.gov/',
+        },
+      ],
+    },
+  ],
+  featureRequests: [
+    {
+      id: 'req-01',
+      title: 'Live Radon & Soil Vapor Intrusion Sensor Bluetooth Sync',
+      category: 'Diagnostics & AI',
+      description: 'Connect consumer continuous radon monitors via Bluetooth/CSV into the offline property audit report for pre-purchase buyers.',
+      requestedBy: 'Hannah K. (Seattle, WA)',
+      locationContext: 'Seattle, WA',
+      votes: 34,
+      status: 'AI Scoped — Queued',
+      aiScopeNote: 'Scoped for Web Bluetooth & Capacitor iOS CoreBluetooth ingestion with EPA 4.0 pCi/L action-level flagging and automatic offline backup.',
+      createdAt: '2026-11-11T19:00:00Z',
+    },
+    {
+      id: 'req-02',
+      title: 'Thermal Bridge & Moisture Meter Photo Overlay Calibration',
+      category: 'Diagnostics & AI',
+      description: 'Overlay FLIR thermal hot/cold spots directly over smartphone audit photos to prove hidden shower pan leaks to slumlords.',
+      requestedBy: 'Derrick M. (Oakland, CA)',
+      locationContext: 'Oakland, CA',
+      votes: 28,
+      status: 'In Beta Build',
+      aiScopeNote: 'Scheduled for next TestFlight beta build using dual-layer opacity calibration and EXIF timestamp locking.',
+      createdAt: '2026-11-12T10:15:00Z',
+    },
+    {
+      id: 'req-03',
+      title: 'Municipal Well Water PFAS & Heavy Metal Zip-Code Cross-Check',
+      category: 'Public Database & Offline',
+      description: 'Pull EPA UCMR-5 PFAS lab results alongside state water utility violation notices before recommending water filtration SKUs.',
+      requestedBy: 'Sonia R. (Houston, TX)',
+      locationContext: 'Houston, TX',
+      votes: 41,
+      status: 'AI Scoped — Queued',
+      aiScopeNote: 'Will link EPA SDWIS/UCMR-5 public datasets into the Open iCloud Multi-Agency Ledger and auto-match NSF-53/RO filters.',
+      createdAt: '2026-11-12T16:40:00Z',
+    },
+  ],
 };
 
 function ensureDb(): InsightsDatabase {
@@ -1329,7 +1573,21 @@ function ensureDb(): InsightsDatabase {
     const merged: InsightsDatabase = {
       ...structuredClone(SEED_DATA),
       ...parsed,
-      contractors: parsed.contractors?.length ? parsed.contractors : structuredClone(SEED_DATA.contractors),
+      contractors: (parsed.contractors?.length ? parsed.contractors : structuredClone(SEED_DATA.contractors)).map((ctr) => {
+        const seedMatch = SEED_DATA.contractors.find((s) => s.id === ctr.id);
+        return {
+          ...seedMatch,
+          ...ctr,
+          certifications: ctr.certifications?.length ? ctr.certifications : seedMatch?.certifications || [ctr.licenseClass],
+          certificationIssuer: ctr.certificationIssuer || seedMatch?.certificationIssuer || 'State Licensing Board',
+          certificationExpiry: ctr.certificationExpiry || seedMatch?.certificationExpiry || '2027-12-31',
+          verificationPhone: ctr.verificationPhone || seedMatch?.verificationPhone || '+1 (800) 555-0190',
+          callVerification: ctr.callVerification || seedMatch?.callVerification || {
+            status: 'Pending Call',
+            verificationCode: String(100000 + (ctr.licenseNumber.length * 7919) % 899999),
+          },
+        };
+      }),
       reviews: parsed.reviews?.some((r) => r.id === 'rev-04')
         ? parsed.reviews
         : [...(parsed.reviews || []), ...SEED_DATA.reviews.filter((s) => !(parsed.reviews || []).some((r) => r.id === s.id))],
@@ -1346,6 +1604,12 @@ function ensureDb(): InsightsDatabase {
       crowdfundCampaigns: parsed.crowdfundCampaigns?.length
         ? parsed.crowdfundCampaigns
         : structuredClone(SEED_DATA.crowdfundCampaigns),
+      publicCloudLedger: parsed.publicCloudLedger?.length
+        ? parsed.publicCloudLedger
+        : structuredClone(SEED_DATA.publicCloudLedger),
+      featureRequests: parsed.featureRequests?.length
+        ? parsed.featureRequests
+        : structuredClone(SEED_DATA.featureRequests),
       storeItems: SEED_DATA.storeItems.map((seedItem) => {
         const existing = (parsed.storeItems || []).find((p) => p.id === seedItem.id);
         if (!existing) return structuredClone(seedItem);

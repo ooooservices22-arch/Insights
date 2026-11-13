@@ -36,6 +36,17 @@ export interface Contractor {
   rentalInventory: string[];
   bio: string;
   meritRankScore: number;
+  certifications?: string[];
+  certificationIssuer?: string;
+  certificationExpiry?: string;
+  verificationPhone?: string;
+  callVerification?: {
+    status: 'Verified by Call' | 'Call Requested' | 'Pending Call';
+    verifiedAt?: string;
+    verificationCode: string;
+    callNotes?: string;
+    verifierName?: string;
+  };
 }
 
 export interface EvidenceMedia {
@@ -482,7 +493,7 @@ export interface DamageAnalysisResult {
 
 export interface HazardAlert {
   id: string;
-  type: 'Earthquake' | 'Flood' | 'Fire Weather' | 'Severe Storm' | 'Groundwater';
+  type: 'Earthquake' | 'Flood' | 'Fire Weather' | 'Severe Storm' | 'Groundwater' | 'Air Quality';
   severity: 'Advisory' | 'Watch' | 'Warning' | 'Urgent';
   title: string;
   description: string;
@@ -506,6 +517,110 @@ export interface LiveHazardSnapshot {
     soilMoisture: number;
     riverDischargeM3s: number | null;
   };
+  airQuality: {
+    usAqi: number;
+    category: 'Good' | 'Moderate' | 'Unhealthy for Sensitive' | 'Unhealthy' | 'Very Unhealthy' | 'Hazardous';
+    pm25: number;
+    pm10: number;
+    ozone: number;
+    no2: number;
+    co: number;
+    dust: number;
+    uvIndex: number;
+    moldSporeRisk: 'Low' | 'Moderate' | 'High';
+    pollenSummary: string;
+  };
+  atmosphericRaw: {
+    pressureHpa: number;
+    pressureTrend3hHpa: number;
+    humidityPct: number;
+    dewPointF: number;
+    capeJkg: number;
+    cloudCoverPct: number;
+    hourly48h: Array<{
+      time: string;
+      tempF: number;
+      pressureHpa: number;
+      humidityPct: number;
+      precipMm: number;
+      windMph: number;
+      usAqi: number;
+    }>;
+  };
   alerts: HazardAlert[];
   recentQuakes: HazardAlert[];
+}
+
+export interface IndependentForecastResult {
+  locationLabel: string;
+  generatedAt: string;
+  headline: string;
+  methodologyNote: string;
+  barometricAndMoistureAnalysis: string;
+  predictedPeriods: Array<{
+    window: string;
+    condition: string;
+    confidencePct: number;
+    tempRangeF: string;
+    precipProbabilityPct: number;
+    aqiProjection: string;
+    hazardDriver: string;
+    actionablePrep: string;
+  }>;
+  blindSpotsMediaMisses: string[];
+  sources: GroundingSource[];
+}
+
+export interface AgencyCrossCheck {
+  agency:
+    | 'NOAA / NWS'
+    | 'USGS'
+    | 'US EPA'
+    | 'FEMA'
+    | 'CDC'
+    | 'FDA'
+    | 'OSHA'
+    | 'State Licensing Board';
+  status: 'Corroborated' | 'Discrepancy Flagged' | 'Updated';
+  finding: string;
+  verifiedAt: string;
+  sourceUrl: string;
+}
+
+export interface PublicCloudAgencyRecord {
+  id: string;
+  cloudKitRecordType: string;
+  topicCategory:
+    | 'Air Quality & Emissions'
+    | 'Water & Contamination'
+    | 'Flood & Seismic Zone'
+    | 'Food Cold-Chain & Hygiene'
+    | 'Contractor & Licensing'
+    | 'Disaster Infrastructure';
+  region: string;
+  title: string;
+  claimOrMetric: string;
+  consensusStatus: 'Multi-Agency Verified' | 'Discrepancy Under Review';
+  agencyChecks: AgencyCrossCheck[];
+  lastCrossCheckedAt: string;
+  upvotes: number;
+}
+
+export interface FeatureRequest {
+  id: string;
+  title: string;
+  category:
+    | 'Diagnostics & AI'
+    | 'Hazards & Weather'
+    | 'Contractor Verification'
+    | 'Store & Rentals'
+    | 'Public Database & Offline'
+    | 'Other Unsupported Feature';
+  description: string;
+  requestedBy: string;
+  locationContext?: string;
+  votes: number;
+  status: 'Requested' | 'AI Scoped — Queued' | 'In Beta Build';
+  aiScopeNote?: string;
+  createdAt: string;
 }

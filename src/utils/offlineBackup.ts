@@ -8,12 +8,14 @@ import type {
   ContractorReview,
   EmergencyMessage,
   FamilyCrowdfundCampaign,
+  FeatureRequest,
   FieldAuditRecord,
   FieldGig,
   FormerEmployeeInsight,
   ForumPost,
   GrocerySanitationReport,
   PowerOutageReport,
+  PublicCloudAgencyRecord,
   StoreItem,
   StoreOrder,
   UsedEquipmentListing,
@@ -41,6 +43,8 @@ export interface OfflineBackupSnapshot {
   formerEmployeeInsights?: FormerEmployeeInsight[];
   crowdfundCampaigns?: FamilyCrowdfundCampaign[];
   betaEnrollments?: BetaScoutProgramEnrollment[];
+  publicCloudRecords?: PublicCloudAgencyRecord[];
+  featureRequests?: FeatureRequest[];
 }
 
 export function saveOfflineBackup(snapshot: OfflineBackupSnapshot): string {
