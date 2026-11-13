@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ExternalLink, MessageSquare, Send, X } from 'lucide-react';
 import type { GroundingSource } from '../types';
 
@@ -13,26 +13,33 @@ interface Props {
   onClose: () => void;
   contextSection: string;
   locationLabel: string;
+  prefillQuestion?: string | null;
+  onClearPrefill?: () => void;
 }
 
 const QUICK_PROMPTS = [
   'Translate "hydrostatic uplift & French drain sump tie-in" for my insurance call',
-  'What should I ask a contractor before paying a deposit?',
-  'How do I document apartment mold so management cannot just paint over it?',
-  'Explain IICRC S500 water damage Category 1 vs Category 3',
+  'How do I prevent organic growth / mold spores from contaminating my house?',
+  'Step-by-step rebuild & coil maintenance guide for a used commercial dehumidifier',
+  'How to set up smart water shutoff & humidity alerts while on vacation',
 ];
 
-export const AiGuideDrawer: React.FC<Props> = ({ open, onClose, contextSection, locationLabel }) => {
+export const AiGuideDrawer: React.FC<Props> = ({
+  open,
+  onClose,
+  contextSection,
+  locationLabel,
+  prefillQuestion,
+  onClearPrefill,
+}) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      text: 'Ask anything about contractor quotes, insurance policy terminology, IICRC remediation standards, soil/groundwater testing, or navigating insights.',
+      text: 'Ask anything about organic growth prevention, smart vacation alerts, equipment rebuilds, water filtration, contractor quotes, insurance terminology, or navigating insights.',
     },
   ]);
   const [input, setInput] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
-
-  if (!open) return null;
 
   const sendQuestion = async (q: string) => {
     if (!q.trim() || loading) return;
@@ -62,6 +69,16 @@ export const AiGuideDrawer: React.FC<Props> = ({ open, onClose, contextSection, 
     }
   };
 
+  useEffect(() => {
+    if (open && prefillQuestion) {
+      sendQuestion(prefillQuestion);
+      onClearPrefill?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, prefillQuestion]);
+
+  if (!open) return null;
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/60 flex justify-end">
       <aside className="w-full max-w-md bg-white dark:bg-slate-900 h-full border-l border-slate-200 dark:border-slate-800 flex flex-col">
@@ -69,7 +86,7 @@ export const AiGuideDrawer: React.FC<Props> = ({ open, onClose, contextSection, 
           <div className="flex items-center gap-2">
             <MessageSquare className="w-4 h-4 text-amber-600" />
             <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">insights AI Guide & Verbiage Coach</h2>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">insights AI Guide & How-To Assistant</h2>
               <div className="text-[11px] text-slate-500 dark:text-slate-400">
                 Grounded advice · {locationLabel}
               </div>
@@ -127,7 +144,7 @@ export const AiGuideDrawer: React.FC<Props> = ({ open, onClose, contextSection, 
               )}
             </div>
           ))}
-          {loading && <div className="text-xs text-slate-500">Verifying codes and drafting plain-English guidance...</div>}
+          {loading && <div className="text-xs text-slate-500">Verifying codes and drafting guidance...</div>}
         </div>
 
         <form
@@ -141,7 +158,7 @@ export const AiGuideDrawer: React.FC<Props> = ({ open, onClose, contextSection, 
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about quotes, insurance terms, or codes..."
+            placeholder="Ask any how-to, rebuild, mold, or insurance question..."
             className="flex-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-600"
           />
           <button

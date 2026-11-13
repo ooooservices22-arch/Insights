@@ -21,6 +21,7 @@ import type {
   FieldGig,
   ForumPost,
   ForumReply,
+  GrocerySanitationReport,
   StoreOrder,
 } from './src/types.ts';
 
@@ -193,6 +194,14 @@ app.post('/api/bookings', (req, res) => {
     serviceMode: body.serviceMode || 'Virtual Diagnostic',
     scheduledDate: body.scheduledDate,
     issueSummary: body.issueSummary?.trim() || 'Initial diagnostic & consultation',
+    milestones:
+      body.serviceMode === 'Start-to-Finish Virtual Inspector'
+        ? [
+            { stage: '1. Pre-Work & Containment Check', status: 'Pending', note: 'Awaiting initial contractor setup photos' },
+            { stage: '2. Mid-Job Rough-In / Remediation Audit', status: 'Pending', note: 'Live check before walls/surfaces close' },
+            { stage: '3. Final Code & Moisture Clearance', status: 'Pending', note: 'Final sign-off & invoice check' },
+          ]
+        : undefined,
     feeUsd: Number(body.feeUsd ?? contractor.virtualConsultFee),
     status: 'Confirmed',
     createdAt: new Date().toISOString(),
@@ -200,6 +209,27 @@ app.post('/api/bookings', (req, res) => {
   db.bookings.unshift(booking);
   writeDb(db);
   res.status(201).json(booking);
+});
+
+app.post('/api/bookings/:id/milestone', (req, res) => {
+  const { stageIndex, status, note } = req.body as {
+    stageIndex: number;
+    status: 'Pending' | 'Passed' | 'Correction Needed';
+    note: string;
+  };
+  const db = readDb();
+  const booking = db.bookings.find((b) => b.id === req.params.id);
+  if (!booking || !booking.milestones?.[stageIndex]) {
+    res.status(404).json({ error: 'Booking milestone not found.' });
+    return;
+  }
+  booking.milestones[stageIndex] = {
+    ...booking.milestones[stageIndex],
+    status,
+    note: note || booking.milestones[stageIndex].note,
+  };
+  writeDb(db);
+  res.json(booking);
 });
 
 // Verified Outcome Reviews
@@ -497,10 +527,14 @@ app.post('/api/almanac/:id/verify', (req, res) => {
   res.json(report);
 });
 
-// Wholesale Dropshipping Store & Tool Rentals (with DoorDash Job-Site Delivery)
+// Wholesale Dropshipping Store, Subscriptions, Used Equipment & Tool Rentals
 app.get('/api/store', (_req, res) => {
   const db = readDb();
-  res.json({ items: db.storeItems, orders: db.storeOrders });
+  res.json({
+    items: db.storeItems,
+    orders: db.storeOrders,
+    usedEquipment: db.usedEquipment || [],
+  });
 });
 
 app.post('/api/store/orders', (req, res) => {
@@ -509,7 +543,7 @@ app.post('/api/store/orders', (req, res) => {
     shippingAddress: string;
     deliveryMethod?: 'doordash_jobsite' | 'wholesale_shipping' | 'restorer_pickup';
     jobSiteNotes?: string;
-    items: Array<{ itemId: string; mode: 'buy' | 'rent'; qty: number }>;
+    items: Array<{ itemId: string; mode: 'buy' | 'rent' | 'subscribe'; qty: number; intervalMonths?: number }>;
   };
   if (!customerName || !shippingAddress || !items?.length) {
     res.status(400).json({ error: 'Customer name, address, and cart items are required.' });
@@ -528,7 +562,7 @@ app.post('/api/store/orders', (req, res) => {
         : sku.wholesalePrice;
     const qty = Math.max(1, Number(line.qty || 1));
     total += unitPrice * qty;
-    if (line.mode === 'buy' && sku.inStock >= qty) {
+    if ((line.mode === 'buy' || line.mode === 'subscribe') && sku.inStock >= qty) {
       sku.inStock -= qty;
     }
     orderItems.push({
@@ -537,9 +571,11 @@ app.post('/api/store/orders', (req, res) => {
       mode: line.mode,
       qty,
       unitPrice,
+      intervalMonths: line.mode === 'subscribe' ? line.intervalMonths || sku.subscriptionIntervalMonths || 6 : undefined,
     });
   }
 
+  const hasSub = orderItems.some((i) => i.mode === 'subscribe');
   const method = deliveryMethod || 'wholesale_shipping';
   const dispatchFee = method === 'doordash_jobsite' ? 18 : 0;
   total += dispatchFee;
@@ -553,8 +589,9 @@ app.post('/api/store/orders', (req, res) => {
     items: orderItems,
     totalUsd: total,
     createdAt: new Date().toISOString(),
-    status:
-      method === 'doordash_jobsite'
+    status: hasSub
+      ? 'Auto-Ship Expiration Subscription Active + Initial Dispatch Confirmed'
+      : method === 'doordash_jobsite'
         ? 'DoorDash Job-Site Courier Requested (45–90 min ETA)'
         : method === 'restorer_pickup'
           ? 'Ready for Local Restorer Counter Pickup'
@@ -659,6 +696,80 @@ app.post('/api/abandoned-hazards/:id/confirm', (req, res) => {
   item.neighborConfirmations += 1;
   writeDb(db);
   res.json(item);
+});
+
+// Power Outages & Grocery Store Spoilage / Mold Watch
+app.get('/api/power-outages', (_req, res) => {
+  const db = readDb();
+  res.json(db.powerOutages || []);
+});
+
+app.get('/api/grocery-reports', (_req, res) => {
+  const db = readDb();
+  res.json(db.groceryReports || []);
+});
+
+app.post('/api/grocery-reports', async (req, res) => {
+  const body = req.body as Partial<GrocerySanitationReport>;
+  if (!body.storeName || !body.summary || !body.reporterName || !body.proofCaption) {
+    res.status(400).json({
+      error: 'Store name, factual summary, reporter name, and photo/video proof description are required.',
+    });
+    return;
+  }
+  const mod = await moderateSubmission({
+    type: 'blacklist',
+    text: `${body.storeName} (${body.department}): ${body.summary}`,
+    hasEvidence: Boolean(body.mediaDataUrl || body.proofCaption),
+  });
+  if (!mod.constructive) {
+    res.status(422).json({ error: `Submission blocked by moderation policy: ${mod.reason}` });
+    return;
+  }
+  const db = readDb();
+  if (!db.groceryReports) db.groceryReports = [];
+  const report: GrocerySanitationReport = {
+    id: `grc-${Date.now()}`,
+    storeName: body.storeName.trim(),
+    branchLocation: body.branchLocation?.trim() || 'Main Branch',
+    city: body.city?.trim() || 'San Francisco, CA',
+    department: body.department || 'Produce Misters & Bins',
+    advisory: body.advisory || 'Stay Away — Mold Proof',
+    powerOutageHours: body.powerOutageHours ? Number(body.powerOutageHours) : undefined,
+    summary: body.summary.trim(),
+    reporterName: body.reporterName.trim(),
+    mediaType: body.mediaType || 'photo',
+    mediaDataUrl: body.mediaDataUrl,
+    proofCaption: body.proofCaption.trim(),
+    moderationStatus: body.advisory === 'Verified Clean' && !mod.requiresHold ? 'verified' : 'pending_fact_check',
+    moderationNote: mod.reason,
+    confirmations: 1,
+    createdAt: new Date().toISOString(),
+  };
+  db.groceryReports.unshift(report);
+  writeDb(db);
+  res.status(201).json(report);
+});
+
+app.post('/api/grocery-reports/:id/verify', (req, res) => {
+  const { action } = req.body as { action: 'verify' | 'confirm' | 'dispute' };
+  const db = readDb();
+  const target = (db.groceryReports || []).find((g) => g.id === req.params.id);
+  if (!target) {
+    res.status(404).json({ error: 'Grocery report not found.' });
+    return;
+  }
+  if (action === 'verify') {
+    target.moderationStatus = 'verified';
+    target.moderationNote = 'Timestamped photo/video inspection evidence verified.';
+  } else if (action === 'dispute') {
+    target.moderationStatus = 'disputed';
+    target.moderationNote = 'Flagged for updated store re-inspection.';
+  } else {
+    target.confirmations += 1;
+  }
+  writeDb(db);
+  res.json(target);
 });
 
 // Off-Grid / Survival Emergency Encrypted Comms

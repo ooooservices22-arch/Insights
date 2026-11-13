@@ -10,7 +10,9 @@ export type ContractorCategory =
   | 'Structural Engineer'
   | 'Industrial Hygienist'
   | 'Property Attorney'
-  | 'Generator Specialist';
+  | 'Generator Specialist'
+  | 'HVAC & Sealed-Air Systems'
+  | 'Virtual Job Inspector';
 
 export interface Contractor {
   id: string;
@@ -145,6 +147,8 @@ export interface StoreItem {
     | 'Soil & Moisture'
     | 'Pest Control'
     | 'Emergency Power'
+    | 'Water Filtration'
+    | 'Survival & Smart Guard'
     | 'Safety & PPE';
   sku: string;
   wholesalePrice: number;
@@ -152,6 +156,9 @@ export interface StoreItem {
   rentable: boolean;
   dailyRentalPrice?: number;
   rentalProvider?: string;
+  subscribable?: boolean;
+  subscriptionIntervalMonths?: number;
+  recommendedInstallerCategory?: ContractorCategory;
   imageUrl?: string;
   specs: string;
   contractorEndorsements: number;
@@ -164,10 +171,66 @@ export interface StoreOrder {
   shippingAddress: string;
   deliveryMethod: 'doordash_jobsite' | 'wholesale_shipping' | 'restorer_pickup';
   jobSiteNotes?: string;
-  items: { itemId: string; name: string; mode: 'buy' | 'rent'; qty: number; unitPrice: number }[];
+  items: {
+    itemId: string;
+    name: string;
+    mode: 'buy' | 'rent' | 'subscribe';
+    qty: number;
+    unitPrice: number;
+    intervalMonths?: number;
+  }[];
   totalUsd: number;
   createdAt: string;
   status: string;
+}
+
+export interface UsedEquipmentListing {
+  id: string;
+  name: string;
+  sellerCompany: string;
+  city: string;
+  conditionGrade: 'Grade A — Serviced' | 'Grade B — Rebuilt' | 'As-Is — Rebuild Project';
+  hoursUsed: number;
+  usedPriceUsd: number;
+  originalRetailUsd: number;
+  maintenanceHistory: string;
+}
+
+export interface GrocerySanitationReport {
+  id: string;
+  storeName: string;
+  branchLocation: string;
+  city: string;
+  department:
+    | 'Produce Misters & Bins'
+    | 'Dairy & Deli Coolers'
+    | 'Meat & Seafood Cases'
+    | 'Bakery & Dry Bulk'
+    | 'Power Outage / Spoilage';
+  advisory: 'Stay Away — Mold Proof' | 'Power Outage — Spoilage Risk' | 'Caution — Poor Cleaning' | 'Verified Clean';
+  powerOutageHours?: number;
+  summary: string;
+  reporterName: string;
+  mediaType: 'photo' | 'video';
+  mediaDataUrl?: string;
+  proofCaption: string;
+  moderationStatus: VerificationStatus;
+  moderationNote?: string;
+  confirmations: number;
+  createdAt: string;
+}
+
+export interface PowerOutageReport {
+  id: string;
+  utilityOrDistrict: string;
+  city: string;
+  lat: number;
+  lon: number;
+  affectedCustomers: number;
+  durationHours: number;
+  nearbyAffectedGrocers: string[];
+  status: 'Active Outage' | 'Restored — Spoilage Window';
+  updatedAt: string;
 }
 
 export interface FieldGig {
@@ -212,9 +275,15 @@ export interface Booking {
   contractorName: string;
   clientName: string;
   clientEmail: string;
-  serviceMode: 'Virtual Diagnostic' | 'On-Site Inspection' | 'Equipment Rental' | 'Legal / Hygienist Consult';
+  serviceMode:
+    | 'Virtual Diagnostic'
+    | 'Start-to-Finish Virtual Inspector'
+    | 'On-Site Inspection'
+    | 'Equipment Rental'
+    | 'Legal / Hygienist Consult';
   scheduledDate: string;
   issueSummary: string;
+  milestones?: { stage: string; status: 'Pending' | 'Passed' | 'Correction Needed'; note: string }[];
   feeUsd: number;
   status: 'Confirmed' | 'Pending';
   createdAt: string;

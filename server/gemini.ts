@@ -85,7 +85,7 @@ Return ONLY valid JSON matching this exact structure (no markdown commentary out
     ]
   },
   "insuranceClaimVerbiage": "Exact professional script & terminology the homeowner can copy when speaking to an insurance adjuster or contractor so they are not taken advantage of",
-  "recommendedSpecialistType": "e.g. IICRC Restoration or Structural Engineer or General B",
+  "recommendedSpecialistType": "e.g. IICRC Restoration or Structural Engineer or HVAC & Sealed-Air Systems",
   "animatedSteps": [
     {
       "stepNumber": 1,
@@ -144,21 +144,27 @@ export async function getLocationIntelligence(params: {
   earthquakeFaultContext: string;
   fireHazardZone: string;
   soilComposition: string;
+  townDisasterHistory: string;
+  agencyReadinessAndUpgrades: string;
+  investmentRiskAudit: string;
   sources: GroundingSource[];
 }> {
   const ai = getClient();
 
-  const prompt = `Provide verified municipal, geological, and hydrological property intelligence for coordinates (${params.lat.toFixed(4)}, ${params.lon.toFixed(4)}) / "${params.locationLabel}".
-Use Google Search to retrieve real data from USGS, FEMA Flood Map Service Center, state geological surveys, and municipal public works.
+  const prompt = `Provide verified worldwide municipal, geological, historical disaster, and pre-purchase property intelligence for coordinates (${params.lat.toFixed(4)}, ${params.lon.toFixed(4)}) / "${params.locationLabel}".
+Use Google Search to retrieve real data from USGS, FEMA, local municipal public works, after-action emergency management reports, and geological surveys.
 Return ONLY valid JSON with these keys:
 {
   "summary": "2-3 sentence objective overview of property hazard profile for this location",
   "waterTableDepth": "Historical and current regional groundwater table depth and seasonal fluctuation notes",
   "pumpingStations": "Nearest municipal stormwater/groundwater pumping stations or flood-control districts",
-  "floodZoneRisk": "FEMA flood zone context and historical inundation events",
-  "earthquakeFaultContext": "Nearest mapped earthquake fault lines, last major rupture year, and USGS seismic hazard recurrence context",
-  "fireHazardZone": "Local WUI / CalFire / wildfire hazard severity and defensible space guidance",
-  "soilComposition": "Dominant soil type (clay, sandy loam, alluvium, liquefaction susceptibility) and DIY soil percolation/groundwater test tips"
+  "floodZoneRisk": "FEMA / regional flood zone context and historical inundation events",
+  "earthquakeFaultContext": "Nearest mapped earthquake fault lines, last major rupture year, and seismic hazard recurrence context",
+  "fireHazardZone": "Local wildfire / WUI hazard severity and defensible space guidance",
+  "soilComposition": "Dominant soil type (clay, sandy loam, alluvium, liquefaction susceptibility) and DIY soil percolation tips",
+  "townDisasterHistory": "Documented major historical floods, wildfires, freezes, or earthquakes in this town/region",
+  "agencyReadinessAndUpgrades": "Documented after-action findings on whether local/government agencies were understaffed or ill-equipped during past disasters, and specific drainage, grid, pump, or alert upgrades implemented afterward",
+  "investmentRiskAudit": "Pre-purchase property & neighborhood due-diligence checklist to prevent buyers from making a costly bad investment here"
 }`;
 
   const response = await ai.models.generateContent({
@@ -177,6 +183,9 @@ Return ONLY valid JSON with these keys:
     earthquakeFaultContext: string;
     fireHazardZone: string;
     soilComposition: string;
+    townDisasterHistory: string;
+    agencyReadinessAndUpgrades: string;
+    investmentRiskAudit: string;
   }>(response.text ?? '');
 
   return {
@@ -197,7 +206,7 @@ export async function askInsightsGuide(params: {
     contents: `User location: ${params.locationLabel}. Current workspace: ${params.contextSection}.\n\nUser question: ${params.question}`,
     config: {
       systemInstruction:
-        'You are the insights Guide—an authoritative, calm property intelligence advisor. Translate complex contractor bids, IICRC remediation terms, insurance policy exclusions, building codes, and soil/water testing steps into clear, empowering plain English. Always cite verified standards and real sources when grounded via Google Search. Be concise and practical.',
+        'You are the insights Guide—an authoritative, calm property, health-hygiene, and equipment-rebuild advisor. Help everyday users stay independent and avoid losing money: (1) explain organic growth/mold biology and sealed fresh-air prevention, (2) give step-by-step smart-home vacation sensor & shutoff setups, (3) provide clear maintenance & rebuild tutorials for used dehumidifiers, air scrubbers, generators, and water filters, (4) translate contractor bids, IICRC standards, and insurance exclusions into empowering plain English. Always cite verified standards and real web sources when grounded via Google Search.',
       tools: [{ googleSearch: {} }],
     },
   });

@@ -17,6 +17,7 @@ import type {
   GroundingSource,
   HazardAlert,
   LiveHazardSnapshot,
+  PowerOutageReport,
 } from '../types';
 
 interface PresetRegion {
@@ -31,6 +32,8 @@ const REGION_PRESETS: PresetRegion[] = [
   { label: 'Houston, TX', lat: 29.7604, lon: -95.3698 },
   { label: 'Miami, FL', lat: 25.7617, lon: -80.1918 },
   { label: 'Seattle, WA', lat: 47.6062, lon: -122.3321 },
+  { label: 'Tokyo, Japan', lat: 35.6762, lon: 139.6503 },
+  { label: 'London, UK', lat: 51.5072, lon: -0.1276 },
 ];
 
 interface CityIntel {
@@ -41,6 +44,9 @@ interface CityIntel {
   earthquakeFaultContext: string;
   fireHazardZone: string;
   soilComposition: string;
+  townDisasterHistory?: string;
+  agencyReadinessAndUpgrades?: string;
+  investmentRiskAudit?: string;
   sources: GroundingSource[];
 }
 
@@ -49,6 +55,7 @@ interface Props {
   onUpdateCoords: (next: { lat: number; lon: number; label: string }) => void;
   contractors: Contractor[];
   almanac: AlmanacReport[];
+  powerOutages: PowerOutageReport[];
   onAddAlmanac: (report: AlmanacReport) => void;
   onVerifyAlmanac: (id: string) => void;
 }
@@ -58,12 +65,15 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
   onUpdateCoords,
   contractors,
   almanac,
+  powerOutages,
   onAddAlmanac,
   onVerifyAlmanac,
 }) => {
   const [snapshot, setSnapshot] = useState<LiveHazardSnapshot | null>(null);
   const [loadingHazards, setLoadingHazards] = useState<boolean>(true);
   const [gpsNotice, setGpsNotice] = useState<string>('');
+  const [worldQuery, setWorldQuery] = useState<string>('');
+  const [searchingWorld, setSearchingWorld] = useState<boolean>(false);
 
   const [cityIntel, setCityIntel] = useState<CityIntel | null>(null);
   const [loadingIntel, setLoadingIntel] = useState<boolean>(false);
@@ -199,6 +209,48 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!worldQuery.trim()) return;
+                setSearchingWorld(true);
+                try {
+                  const res = await fetch(
+                    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(worldQuery.trim())}&count=1&language=en&format=json`
+                  );
+                  if (res.ok) {
+                    const data = await res.json();
+                    const hit = data?.results?.[0];
+                    if (hit) {
+                      const label = [hit.name, hit.admin1, hit.country].filter(Boolean).join(', ');
+                      onUpdateCoords({ lat: Number(hit.latitude.toFixed(4)), lon: Number(hit.longitude.toFixed(4)), label });
+                      setGpsNotice(`Worldwide lock: ${label} (${hit.latitude.toFixed(3)}, ${hit.longitude.toFixed(3)})`);
+                      setCityIntel(null);
+                    } else {
+                      setGpsNotice(`No location matched "${worldQuery}". Try another city worldwide.`);
+                    }
+                  }
+                } finally {
+                  setSearchingWorld(false);
+                }
+              }}
+              className="flex items-center gap-1.5"
+            >
+              <input
+                type="text"
+                value={worldQuery}
+                onChange={(e) => setWorldQuery(e.target.value)}
+                placeholder="Any city worldwide..."
+                className="w-40 px-2.5 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+              />
+              <button
+                type="submit"
+                disabled={searchingWorld}
+                className="px-3 py-2 text-xs font-semibold bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white rounded-lg whitespace-nowrap shrink-0"
+              >
+                {searchingWorld ? 'Finding...' : 'Go'}
+              </button>
+            </form>
             <button
               type="button"
               onClick={handleUseBrowserGps}
@@ -211,7 +263,10 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
               value={coords.label}
               onChange={(e) => {
                 const preset = REGION_PRESETS.find((r) => r.label === e.target.value);
-                if (preset) onUpdateCoords(preset);
+                if (preset) {
+                  setCityIntel(null);
+                  onUpdateCoords(preset);
+                }
               }}
               className="px-3 py-2 text-xs font-medium bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
             >
@@ -555,6 +610,36 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
                   {cityIntel.earthquakeFaultContext} {cityIntel.fireHazardZone} {cityIntel.soilComposition}
                 </p>
               </div>
+              {cityIntel.townDisasterHistory && (
+                <div className="p-4 border border-slate-200 dark:border-slate-800 rounded-lg space-y-1">
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Wind className="w-3.5 h-3.5 text-amber-600" /> Town Disaster & Infrastructure History
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {cityIntel.townDisasterHistory}
+                  </p>
+                </div>
+              )}
+              {cityIntel.agencyReadinessAndUpgrades && (
+                <div className="p-4 border border-slate-200 dark:border-slate-800 rounded-lg space-y-1">
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <AlertOctagon className="w-3.5 h-3.5 text-emerald-600" /> Agency Staffing & Post-Disaster Upgrades
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {cityIntel.agencyReadinessAndUpgrades}
+                  </p>
+                </div>
+              )}
+              {cityIntel.investmentRiskAudit && (
+                <div className="p-4 border border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/20 rounded-lg space-y-1">
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Compass className="w-3.5 h-3.5 text-amber-600" /> Pre-Purchase Property & Neighbor Risk Audit
+                  </div>
+                  <p className="text-slate-700 dark:text-slate-200 leading-relaxed">
+                    {cityIntel.investmentRiskAudit}
+                  </p>
+                </div>
+              )}
             </div>
             {cityIntel.sources?.length > 0 && (
               <div className="flex flex-wrap gap-3 pt-2">
@@ -574,6 +659,49 @@ export const HazardsMapWorkspace: React.FC<Props> = ({
             )}
           </div>
         )}
+      </section>
+
+      {/* Live Power Outages & Grocery Store Cold-Chain Spoilage Advisories */}
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-4">
+        <div>
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            Grid Feeder Telemetry · Cold-Chain Refrigeration Watch
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+            Active Power Outages & Affected Grocery Store Spoilage Alerts
+          </h2>
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+            Tracks grid blackouts exceeding FDA 4-hour cold-holding thresholds so shoppers avoid spoiled perishables.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {powerOutages.map((po) => (
+            <div
+              key={po.id}
+              className="p-4 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2 bg-slate-50 dark:bg-slate-950"
+            >
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-bold text-slate-900 dark:text-white">{po.utilityOrDistrict}</span>
+                <span
+                  className={`font-semibold ${
+                    po.status === 'Active Outage'
+                      ? 'text-red-700 dark:text-red-400'
+                      : 'text-amber-700 dark:text-amber-400'
+                  }`}
+                >
+                  {po.status} · {po.durationHours}h
+                </span>
+              </div>
+              <div className="text-xs text-slate-600 dark:text-slate-300 font-mono tabular-nums">
+                {po.city} · {po.affectedCustomers.toLocaleString()} customers impacted
+              </div>
+              <div className="text-xs text-slate-700 dark:text-slate-200">
+                <span className="font-semibold">Affected Grocery Stores (Inspect Cold Cases Before Buying):</span>{' '}
+                {po.nearbyAffectedGrocers.join(' · ')}
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* Neighborhood Property Almanac (Real-Time Flood & Condition Feed) */}

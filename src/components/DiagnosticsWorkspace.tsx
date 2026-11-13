@@ -20,11 +20,19 @@ import type { DamageAnalysisResult } from '../types';
 
 interface DiyGuide {
   id: string;
-  category: 'Soil & Groundwater' | 'Leak vs. Water Table' | 'Pest Control' | 'Water Remediation' | 'Generators';
+  category:
+    | 'Organic Growth & Mold'
+    | 'Smart Home Guard'
+    | 'Soil & Groundwater'
+    | 'Leak vs. Water Table'
+    | 'Pest Control'
+    | 'Equipment Rebuild'
+    | 'Generators';
   title: string;
   readTime: string;
   codeStandard: string;
   summary: string;
+  communityAttempt?: string;
   prosCons?: { pros: string[]; cons: string[] };
   steps: string[];
   toolsMaterials: { name: string; sourceUrl: string }[];
@@ -114,6 +122,63 @@ const DIY_GUIDES: DiyGuide[] = [
       { name: 'FEMA Backup Power Readiness', sourceUrl: 'https://www.ready.gov/power-outages' },
     ],
   },
+  {
+    id: 'guide-organic-growth',
+    category: 'Organic Growth & Mold',
+    title: 'Organic Growth Biology: Preventing a Contaminated House & Spore Bring-Home',
+    readTime: '6 min guide',
+    codeStandard: 'EPA Mold Guide / IICRC S520',
+    summary:
+      'Microbial mold spores exist everywhere outdoors, but colonize indoors when relative humidity exceeds 60% or contaminated produce/packaging enters damp rooms. Keep a sealed positive-pressure filtered envelope.',
+    communityAttempt:
+      'Previous homeowner solution: Replaced open produce storage + ran ERV HEPA bypass keeping indoor RH at 44%, eliminating recurrent pantry and window-sill spotting without bleach.',
+    steps: [
+      'Maintain indoor relative humidity strictly between 35% and 50% using calibrated hygrometers in bathrooms, kitchens, and crawlspaces.',
+      'Inspect grocery produce bags and corrugated cardboard boxes outside before bringing them into pantries—discard damp packaging from stores with moldy misters.',
+      'Run a sealed-system ERV + MERV-16/HEPA positive-pressure filtration unit so filtered air pushes outward rather than pulling unconditioned crawlspace spores inward.',
+      'Never paint over or bleach porous drywall/wood showing organic growth; physically remove affected porous material under negative-air HEPA containment.',
+    ],
+    toolsMaterials: [
+      { name: 'EPA Mold Course & Moisture Control Standard', sourceUrl: 'https://www.epa.gov/mold/mold-course-chapter-1' },
+      { name: 'IICRC S520 Professional Mold Remediation Standard', sourceUrl: 'https://iicrc.org/s520/' },
+    ],
+  },
+  {
+    id: 'guide-smart-guard',
+    category: 'Smart Home Guard',
+    title: 'Smart Home Vacation Guard: Automated Leak Shutoff & Remote Pro Alerting',
+    readTime: '5 min guide',
+    codeStandard: 'UL 1951 / Cellular Telemetry',
+    summary:
+      'Protect your property while traveling by pairing motorized main water shutoff valves with battery-backed leak, sump-level, and humidity alerts routed to trusted neighbors or verified contractors.',
+    communityAttempt:
+      'Verified outcome: Ultrasonic valve shut off a burst braided washer hose within 40 seconds while owners were overseas, preventing $18,000 in hardwood loss.',
+    steps: [
+      'Install a motorized ball valve on the main cold-water riser downstream of the fire sprinkler tee (never restrict fire suppression lines).',
+      'Place Zigbee/Wi-Fi water-detection pucks under water heaters, dishwashers, washing machines, and inside sump pump basins.',
+      'Configure secondary SMS/webhook escalation to a nearby trusted contact and your verified local C-36 plumber or IICRC restorer before leaving on vacation.',
+    ],
+    toolsMaterials: [
+      { name: 'Insurance Institute for Business & Home Safety (IBHS) Water Shutoff', sourceUrl: 'https://ibhs.org/' },
+    ],
+  },
+  {
+    id: 'guide-rebuild',
+    category: 'Equipment Rebuild',
+    title: 'How to Clean, Maintain & Rebuild Used Dehumidifiers, Scrubbers & Filters',
+    readTime: '7 min guide',
+    codeStandard: 'EPA 608 Safe Service / Manufacturer Spec',
+    summary:
+      'Save 60%+ buying ex-rental commercial restoration gear by safely sanitizing coils, replacing motor brushes/bearings, and swapping HEPA cassettes.',
+    steps: [
+      'Unplug unit and discharge start capacitors safely; open outer housing and vacuum intake pre-filter screen and blower wheel.',
+      'Apply non-acidic evaporator coil cleaner to aluminum fins, rinse condensate pan, and replace brittle vinyl drain check-valves.',
+      'Inspect gasket perimeter seals around HEPA H13 cartridges so zero air bypasses the filter media; log baseline amp draw with a clamp meter.',
+    ],
+    toolsMaterials: [
+      { name: 'ASHRAE Indoor Air Filtration Guidance', sourceUrl: 'https://www.ashrae.org/technical-resources/filtration-and-disinfection-faq' },
+    ],
+  },
 ];
 
 function createSampleDamageImage(): string {
@@ -172,12 +237,14 @@ interface Props {
   locationLabel: string;
   onNavigateToContractors: (specialty?: string) => void;
   onNavigateToStore: (category?: string) => void;
+  onAskGuide: (question: string) => void;
 }
 
 export const DiagnosticsWorkspace: React.FC<Props> = ({
   locationLabel,
   onNavigateToContractors,
   onNavigateToStore,
+  onAskGuide,
 }) => {
   const [imageDataUrl, setImageDataUrl] = useState<string>('');
   const [mimeType, setMimeType] = useState<string>('image/jpeg');
@@ -827,7 +894,16 @@ export const DiagnosticsWorkspace: React.FC<Props> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-950 rounded-lg w-fit">
-          {['All', 'Soil & Groundwater', 'Leak vs. Water Table', 'Pest Control', 'Generators'].map((cat) => (
+          {[
+            'All',
+            'Organic Growth & Mold',
+            'Smart Home Guard',
+            'Soil & Groundwater',
+            'Leak vs. Water Table',
+            'Pest Control',
+            'Equipment Rebuild',
+            'Generators',
+          ].map((cat) => (
             <button
               key={cat}
               type="button"
@@ -843,25 +919,71 @@ export const DiagnosticsWorkspace: React.FC<Props> = ({
           ))}
         </div>
 
+        {/* Direct Virtual Assistant Fallback Bar for Any How-To Question */}
+        <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="text-xs text-slate-700 dark:text-slate-300">
+            Need a custom how-to walkthrough, equipment rebuild tutorial, or healthy-home hygiene advice not listed
+            below?
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              onAskGuide(
+                guideSearch.trim()
+                  ? `Give me a step-by-step code-compliant how-to guide and source links for: ${guideSearch}`
+                  : 'Walk me through preventing organic growth and setting up smart home alerts while away.'
+              )
+            }
+            className="px-3.5 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white rounded-lg whitespace-nowrap shrink-0"
+          >
+            Open Virtual Assistant Chat for Custom How-To
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {filteredGuides.map((guide) => {
-            const isOpen = expandedGuideId === guide.id;
-            return (
-              <div
-                key={guide.id}
-                className="border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between space-y-4"
+          {filteredGuides.length === 0 ? (
+            <div className="md:col-span-2 p-6 border border-slate-200 dark:border-slate-800 rounded-xl text-center space-y-3">
+              <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                No pre-saved tutorial matched "{guideSearch}".
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Launch our Virtual Assistant directly with your topic to receive verified step-by-step instructions and
+                material sources.
+              </p>
+              <button
+                type="button"
+                onClick={() =>
+                  onAskGuide(`Provide a detailed, code-compliant step-by-step how-to guide for: ${guideSearch}`)
+                }
+                className="px-4 py-2 text-xs font-semibold bg-slate-900 dark:bg-amber-600 text-white rounded-lg"
               >
-                <div>
-                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <span>{guide.category}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{guide.readTime}</span>
-                    <span aria-hidden="true">·</span>
-                    <span className="font-mono">{guide.codeStandard}</span>
+                Ask AI Assistant About "{guideSearch}"
+              </button>
+            </div>
+          ) : (
+            filteredGuides.map((guide) => {
+              const isOpen = expandedGuideId === guide.id;
+              return (
+                <div
+                  key={guide.id}
+                  className="border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between space-y-4"
+                >
+                  <div>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                      <span>{guide.category}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{guide.readTime}</span>
+                      <span aria-hidden="true">·</span>
+                      <span className="font-mono">{guide.codeStandard}</span>
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white mt-1.5">{guide.title}</h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">{guide.summary}</p>
+                    {guide.communityAttempt && (
+                      <div className="mt-2 p-2.5 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 rounded-lg text-xs text-emerald-900 dark:text-emerald-200">
+                        {guide.communityAttempt}
+                      </div>
+                    )}
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white mt-1.5">{guide.title}</h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">{guide.summary}</p>
-                </div>
 
                 {isOpen && (
                   <div className="space-y-4 pt-3 border-t border-slate-200 dark:border-slate-800">
@@ -927,7 +1049,17 @@ export const DiagnosticsWorkspace: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() =>
-                      onNavigateToStore(guide.category === 'Pest Control' ? 'Pest Control' : 'Soil & Moisture')
+                      onNavigateToStore(
+                        guide.category === 'Pest Control'
+                          ? 'Pest Control'
+                          : guide.category === 'Organic Growth & Mold'
+                            ? 'Remediation & Air'
+                            : guide.category === 'Smart Home Guard'
+                              ? 'Survival & Smart Guard'
+                              : guide.category === 'Generators'
+                                ? 'Emergency Power'
+                                : 'Soil & Moisture'
+                      )
                     }
                     className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline"
                   >
@@ -936,7 +1068,8 @@ export const DiagnosticsWorkspace: React.FC<Props> = ({
                 </div>
               </div>
             );
-          })}
+          })
+          )}
         </div>
       </section>
     </div>
